@@ -9,8 +9,39 @@
 - `frontend/src/hooks/useLeadCapture.ts` - Custom hook for lead capture form logic, including Maps API integration.
 - `frontend/src/hooks/useLeadCapture.test.ts` - Unit tests for `useLeadCapture.ts`.
 - `frontend/src/app/page.tsx` - Main page for the application, integrating UploadForm and ReportDisplay.
+- `frontend/src/app/layout.tsx` - Root layout for the Next.js application.
+- `frontend/src/app/globals.css` - Global styles for the Next.js application.
+- `frontend/tailwind.config.ts` - Tailwind CSS configuration file.
+- `frontend/postcss.config.mjs` - PostCSS configuration file.
+- `frontend/next.config.mjs` - Next.js configuration file.
+- `frontend/tsconfig.json` - TypeScript configuration for the frontend.
+- `frontend/package.json` - Frontend project dependencies and scripts.
+- `frontend/package-lock.json` - Records the exact versions of frontend dependencies.
+- `frontend/eslint.config.mjs` - ESLint configuration for the frontend.
+- `frontend/.prettierrc.json` - Prettier configuration for the frontend.
+- `frontend/.prettierignore` - Prettier ignore file for the frontend.
+- `frontend/Dockerfile` - Dockerfile for building the frontend Next.js application.
+- `frontend/.dockerignore` - Specifies files to ignore for the frontend Docker build.
+- `frontend/.env.local` - Local environment variables for the frontend (contains secrets, gitignored).
 - `frontend/src/app/api/analyze/route.ts` - Next.js API route for handling the timesheet analysis request.
 - `backend/app/main.py` - FastAPI application entry point.
+- `backend/app/__init__.py` - Makes the `app` directory a Python package.
+- `backend/app/api/__init__.py` - Makes the `api` directory a Python package.
+- `backend/app/api/endpoints/__init__.py` - Makes the `endpoints` directory a Python package.
+- `backend/app/core/__init__.py` - Makes the `core` directory a Python package.
+- `backend/app/models/__init__.py` - Makes the `models` directory a Python package.
+- `backend/app/db/__init__.py` - Makes the `db` directory a Python package.
+- `backend/app/tests/__init__.py` - Makes the `tests` directory a Python package.
+- `backend/app/tests/api/__init__.py` - Makes the `tests/api` directory a Python package.
+- `backend/app/tests/api/endpoints/__init__.py` - Makes the `tests/api/endpoints` directory a Python package.
+- `backend/app/tests/core/__init__.py` - Makes the `tests/core` directory a Python package.
+- `backend/app/tests/db/__init__.py` - Makes the `tests/db` directory a Python package.
+- `backend/pyproject.toml` - Configuration for Python tools like Black and Ruff.
+- `backend/requirements.txt` - Core dependencies for the backend.
+- `backend/requirements-dev.txt` - Development dependencies for the backend (linters, formatters, testing tools).
+- `backend/Dockerfile` - Dockerfile for building the backend FastAPI application.
+- `backend/.dockerignore` - Specifies files to ignore for the backend Docker build.
+- `backend/.env` - Local environment variables for the backend (contains secrets, gitignored).
 - `backend/app/api/endpoints/analysis.py` - FastAPI endpoint for `/analyze`, handling file processing and LLM interaction.
 - `backend/app/tests/api/endpoints/test_analysis.py` - Unit/integration tests for `analysis.py`.
 - `backend/app/core/llm_processing.py` - Module for interacting with the LLM, including prompting for OCR, text extraction, and data normalization.
@@ -30,13 +61,13 @@
 
 ## Tasks
 
-- [ ] 1.0 Setup Project Structure and Core Dependencies
-  - [ ] 1.1 Initialize Next.js frontend project (`frontend/`)
-  - [ ] 1.2 Initialize FastAPI backend project (`backend/`)
-  - [ ] 1.3 Configure basic shared linting, formatting (e.g., ESLint, Prettier, Black, Ruff)
-  - [ ] 1.4 Setup Supabase project and configure environment variables for backend access (DATABASE_URL, SUPABASE_KEY)
-  - [ ] 1.5 Install core frontend dependencies (e.g., `axios` or `fetch` wrapper, `react-dropzone`, Google Maps/Places API client if needed, Tailwind CSS)
-  - [ ] 1.6 Install core backend dependencies (e.g., `fastapi`, `uvicorn`, `pydantic`, `openai` or `google-generativeai`, `psycopg2-binary` or `asyncpg`, `python-dotenv`)
+- [x] 1.0 Setup Project Structure and Core Dependencies
+  - [x] 1.1 Initialize Next.js frontend project (`frontend/`)
+  - [x] 1.2 Initialize FastAPI backend project (`backend/`)
+  - [x] 1.3 Configure basic shared linting, formatting (e.g., ESLint, Prettier, Black, Ruff)
+  - [x] 1.4 Setup Supabase project and configure environment variables for backend access (DATABASE_URL, SUPABASE_SERVICE_KEY, OPENAI_API_KEY). User creates `backend/.env` and `frontend/.env.local` with actual secrets.
+  - [x] 1.5 Install core frontend dependencies (e.g., `axios` or `fetch` wrapper, `react-dropzone`, Google Maps/Places API client if needed, Tailwind CSS, Supabase client if direct FE calls planned)
+  - [x] 1.6 Install core backend dependencies (e.g., `fastapi`, `uvicorn`, `pydantic`, `openai` or `google-generativeai`, `psycopg2-binary` or `asyncpg`, `python-dotenv`)
   - [ ] 1.7 Define initial Pydantic schemas for API requests/responses and LLM function calls (`backend/app/models/schemas.py`)
   - [ ] 1.8 Basic Dockerfile setup for backend and potentially frontend for Fly.io deployment.
 - [ ] 2.0 Implement Frontend: File Upload and Lead Capture UI

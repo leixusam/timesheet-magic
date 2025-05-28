@@ -1,0 +1,24 @@
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Venv
+venv/
+.venv/
+
+# IDE / Editor
+.vscode/
+.idea/
+
+# OS generated
+.DS_Store
+
+# Docker specific
+Dockerfile
+.dockerignore
+
+# Local env files
+.env
+.env.* 

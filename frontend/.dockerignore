@@ -1,0 +1,19 @@
+node_modules
+.next
+out
+coverage
+
+# Git
+.git
+.gitignore
+
+# Docker specific
+Dockerfile
+.dockerignore
+
+# Local env files
+.env
+.env.*
+!.env.example
+!.env.local.example
+# Add any other files or directories that should not be included in the Docker image 

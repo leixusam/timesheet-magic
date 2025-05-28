@@ -1,0 +1,12 @@
+[tool.black]
+line-length = 88
+target-version = ['py311']
+
+[tool.ruff]
+line-length = 88
+select = ["E", "W", "F", "I", "C", "B"] # Base flake8, import sorting, etc.
+ignore = ["E501"] # Ignore line too long, black will handle it
+target-version = "py311"
+
+[tool.ruff.isort]
+known_first_party = ["app"] 
