@@ -1,0 +1,104 @@
+## Relevant Files
+
+- `frontend/src/components/UploadForm.tsx` - Main UI component for file upload and lead capture form.
+- `frontend/src/components/UploadForm.test.tsx` - Unit tests for `UploadForm.tsx`.
+- `frontend/src/components/ReportDisplay.tsx` - Component to render the analysis report (KPIs, heat-map, violation lists, summaries).
+- `frontend/src/components/ReportDisplay.test.tsx` - Unit tests for `ReportDisplay.tsx`.
+- `frontend/src/hooks/useFileUpload.ts` - Custom hook to manage file upload state, API calls to backend.
+- `frontend/src/hooks/useFileUpload.test.ts` - Unit tests for `useFileUpload.ts`.
+- `frontend/src/hooks/useLeadCapture.ts` - Custom hook for lead capture form logic, including Maps API integration.
+- `frontend/src/hooks/useLeadCapture.test.ts` - Unit tests for `useLeadCapture.ts`.
+- `frontend/src/app/page.tsx` - Main page for the application, integrating UploadForm and ReportDisplay.
+- `frontend/src/app/api/analyze/route.ts` - Next.js API route for handling the timesheet analysis request.
+- `backend/app/main.py` - FastAPI application entry point.
+- `backend/app/api/endpoints/analysis.py` - FastAPI endpoint for `/analyze`, handling file processing and LLM interaction.
+- `backend/app/tests/api/endpoints/test_analysis.py` - Unit/integration tests for `analysis.py`.
+- `backend/app/core/llm_processing.py` - Module for interacting with the LLM, including prompting for OCR, text extraction, and data normalization.
+- `backend/app/tests/core/test_llm_processing.py` - Unit tests for `llm_processing.py`.
+- `backend/app/core/compliance_rules.py` - Module defining and applying the compliance logic (overtime, breaks, etc.).
+- `backend/app/tests/core/test_compliance_rules.py` - Unit tests for `compliance_rules.py`.
+- `backend/app/core/reporting.py` - Module for generating the structured data for the report (KPIs, heat-map data, violation details).
+- `backend/app/tests/core/test_reporting.py` - Unit tests for `reporting.py`.
+- `backend/app/models/schemas.py` - Pydantic schemas for API request/response and LLM function calling.
+- `backend/app/db/supabase_client.py` - Module for interacting with Supabase (logging uploads and leads).
+- `backend/app/tests/db/test_supabase_client.py` - Unit tests for `supabase_client.py`.
+
+### Notes
+
+- Unit tests should typically be placed alongside the code files they are testing (e.g., `UploadForm.test.tsx` in the same directory as `UploadForm.tsx`) or in a parallel `tests` directory structure (common in Python).
+- Use `npx jest` (frontend) or `pytest` (backend) to run tests. Configuration will determine specific commands and test discovery.
+
+## Tasks
+
+- [ ] 1.0 Setup Project Structure and Core Dependencies
+  - [ ] 1.1 Initialize Next.js frontend project (`frontend/`)
+  - [ ] 1.2 Initialize FastAPI backend project (`backend/`)
+  - [ ] 1.3 Configure basic shared linting, formatting (e.g., ESLint, Prettier, Black, Ruff)
+  - [ ] 1.4 Setup Supabase project and configure environment variables for backend access (DATABASE_URL, SUPABASE_KEY)
+  - [ ] 1.5 Install core frontend dependencies (e.g., `axios` or `fetch` wrapper, `react-dropzone`, Google Maps/Places API client if needed, Tailwind CSS)
+  - [ ] 1.6 Install core backend dependencies (e.g., `fastapi`, `uvicorn`, `pydantic`, `openai` or `google-generativeai`, `psycopg2-binary` or `asyncpg`, `python-dotenv`)
+  - [ ] 1.7 Define initial Pydantic schemas for API requests/responses and LLM function calls (`backend/app/models/schemas.py`)
+  - [ ] 1.8 Basic Dockerfile setup for backend and potentially frontend for Fly.io deployment.
+- [ ] 2.0 Implement Frontend: File Upload and Lead Capture UI
+  - [ ] 2.1 Create file upload component (`UploadForm.tsx`) supporting drag-and-drop and file picker for specified formats (FR-1)
+  - [ ] 2.2 Implement client-side validation for file types and size (FR-1, FR-8)
+  - [ ] 2.3 Develop lead capture form within `UploadForm.tsx` for Manager Name, Email, Phone, Store Name, Store Physical Address (FR-2)
+  - [ ] 2.4 Integrate Google Maps/Places Autocomplete API for Store Name and Address fields in `useLeadCapture.ts` and `UploadForm.tsx` (FR-2)
+  - [ ] 2.5 Implement form validation for mandatory lead capture fields (FR-2)
+  - [ ] 2.6 Develop logic in `useFileUpload.ts` to initiate file upload to backend API (`/api/analyze`) immediately upon file selection/drop (FR-2)
+  - [ ] 2.7 Ensure lead capture form is displayed and interactive while file processing occurs in backend (FR-2)
+  - [ ] 2.8 Handle submission of lead capture data (potentially as part of the analysis request or a separate call if analysis is already in progress).
+  - [ ] 2.9 Basic UI styling for upload and lead capture form using Tailwind CSS (Design Considerations).
+- [ ] 3.0 Implement Backend: Timesheet Processing and Analysis Logic
+  - [ ] 3.1 Create FastAPI endpoint `/api/endpoints/analysis.py` to receive uploaded file and lead data (FR-1, FR-2)
+  - [ ] 3.2 Implement file handling logic in `analysis.py` to manage various input types (CSV, XLSX, PDF, images, text) (FR-1)
+  - [ ] 3.3 Develop LLM interaction module (`llm_processing.py`): (FR-3)
+    - [ ] 3.3.1 Function to send image data to multi-modal LLM for OCR/text extraction.
+    - [ ] 3.3.2 Function to send text data (from files or OCR) to LLM for normalization using Pydantic schema via function calling.
+    - [ ] 3.3.3 Handle LLM API errors and retries (up to 3 times) (FR-7, Technical Considerations).
+  - [ ] 3.4 Develop `compliance_rules.py` module: (FR-4)
+    - [ ] 3.4.1 Implement logic to detect Meal Break Violations.
+    - [ ] 3.4.2 Implement logic to detect Rest Break Violations (with caveats for data availability).
+    - [ ] 3.4.3 Implement logic for Daily Overtime.
+    - [ ] 3.4.4 Implement logic for Weekly Overtime.
+    - [ ] 3.4.5 Implement logic for Daily Double Overtime.
+    - [ ] 3.4.6 Implement logic to flag potential duplicate employee names from normalized data (FR-3).
+    - [ ] 3.4.7 Implement logic for hourly wage determination (parse from data or use default) (FR-10).
+  - [ ] 3.5 Develop `reporting.py` module: (FR-5, FR-6)
+    - [ ] 3.5.1 Function to calculate KPI tiles data (cost of violations, OT costs, total hours by type).
+    - [ ] 3.5.2 Function to generate data for Staffing Density Heat-Map (dynamic period, hourly counts).
+    - [ ] 3.5.3 Function to compile list of general compliance violations.
+    - [ ] 3.5.4 Function to generate employee-specific summary table data (hours breakdown, violations).
+    - [ ] 3.5.5 Function to provide generic actionable advice text for each violation type.
+  - [ ] 3.6 Integrate parsing, compliance checks, and report data generation in `analysis.py` endpoint.
+- [ ] 4.0 Implement Frontend: Report Generation and Display
+  - [ ] 4.1 Create `ReportDisplay.tsx` component to render the analysis results (FR-6).
+  - [ ] 4.2 Display KPI tiles (Potential Costs, OT Costs, Total Labor Hours by type) (FR-6).
+  - [ ] 4.3 Implement Staffing Density Heat-Map visualization (dynamic grid, color-coded hourly counts) (FR-5, FR-6).
+  - [ ] 4.4 Display general Compliance Violations Summary (FR-6).
+  - [ ] 4.5 Display Employee-Specific Summary Table (hours, violations, suggested actions) (FR-6).
+  - [ ] 4.6 Display Actionable Advice for each violation type (FR-6).
+  - [ ] 4.7 Display plain-language summary of key findings and potential cost-saving areas (FR-6).
+  - [ ] 4.8 Display flagged duplicate name issues (FR-3, FR-6).
+  - [ ] 4.9 Ensure report is mobile-responsive (Design Considerations).
+  - [ ] 4.10 Implement UI for parsing error messages with "Try Again" and "Upload Different File" options (FR-7).
+  - [ ] 4.11 Basic UI styling for the report page using Tailwind CSS (Design Considerations).
+- [ ] 5.0 Implement Backend: Logging and Error Handling
+  - [ ] 5.1 Implement basic logging in `analysis.py` and other core backend modules (FR-9):
+    - [ ] 5.1.1 Log raw input type, parse success/failure, processing time.
+  - [ ] 5.2 Develop `supabase_client.py` module for database interaction.
+    - [ ] 5.2.1 Function to log captured lead information (Manager Name, Email, Phone, Store Name, Address) to Supabase table (FR-2, FR-9).
+    - [ ] 5.2.2 Function to log basic analysis metadata (e.g., request ID, success/failure, timestamp) (FR-9).
+  - [ ] 5.3 Implement robust error handling in FastAPI endpoint and core modules, returning appropriate HTTP status codes and error messages to frontend.
+- [ ] 6.0 End-to-End Integration, Testing, and Refinement
+  - [ ] 6.1 Write unit tests for key frontend components and hooks (e.g., `UploadForm.test.tsx`, `ReportDisplay.test.tsx`, `useFileUpload.test.ts`, `useLeadCapture.test.ts`).
+  - [ ] 6.2 Write unit tests for backend core logic (`test_llm_processing.py`, `test_compliance_rules.py`, `test_reporting.py`).
+  - [ ] 6.3 Write integration tests for backend API endpoint (`test_analysis.py`).
+  - [ ] 6.4 Perform end-to-end manual testing with diverse set of sample files (CSV, XLSX, PDF, images, text) to meet FR-8 SLA and G2 parsing goal.
+  - [ ] 6.5 Test lead capture flow, including Maps API integration and mandatory field validation.
+  - [ ] 6.6 Test error handling for parsing failures and re-upload options.
+  - [ ] 6.7 Test report accuracy and clarity against PRD requirements (G5, SM-4).
+  - [ ] 6.8 Refine UI/UX based on testing and feedback (Design Considerations).
+  - [ ] 6.9 Verify logging in Supabase.
+  - [ ] 6.10 Add privacy placeholder text to UI (Technical Considerations).
+  - [ ] 6.11 Prepare for deployment (e.g., finalize Dockerfiles, Fly.io configurations). 
