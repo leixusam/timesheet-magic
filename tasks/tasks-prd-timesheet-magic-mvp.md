@@ -87,7 +87,7 @@
     - [x] 3.3.1 Function to send image data to multi-modal LLM for OCR/text extraction. (Consolidated into 3.3.2)
     - [x] 3.3.2 Function to send text data (from files or OCR) to LLM for normalization using Pydantic schema via function calling. (Now handles direct file-to-schema parsing)
     - [x] 3.3.3 Handle LLM API errors and retries (up to 3 times) (FR-7, Technical Considerations).
-  - [ ] 3.4 Develop `compliance_rules.py` module: (FR-4)
+  - [x] 3.4 Develop `compliance_rules.py` module: (FR-4)
     - [x] 3.4.1 Implement logic to detect Meal Break Violations.
     - [x] 3.4.2 Implement logic to detect Rest Break Violations (with caveats for data availability).
     - [x] 3.4.3 Implement logic for Daily Overtime.
@@ -95,12 +95,12 @@
     - [x] 3.4.5 Implement logic for Daily Double Overtime.
     - [x] 3.4.6 Implement logic to flag potential duplicate employee names from normalized data (FR-3). **Enhanced with consolidated break detection across multiple roles**.
     - [x] 3.4.7 Implement logic for hourly wage determination (parse from data or use default) (FR-10).
-  - [ ] 3.5 Develop `reporting.py` module: (FR-5, FR-6)
-    - [ ] 3.5.1 Function to calculate KPI tiles data (cost of violations, OT costs, total hours by type).
-    - [ ] 3.5.2 Function to generate data for Staffing Density Heat-Map (dynamic period, hourly counts).
-    - [ ] 3.5.3 Function to compile list of general compliance violations.
-    - [ ] 3.5.4 Function to generate employee-specific summary table data (hours breakdown, violations).
-    - [ ] 3.5.5 Function to provide generic actionable advice text for each violation type.
+  - [x] 3.5 Develop `reporting.py` module: (FR-5, FR-6)
+    - [x] 3.5.1 Function to calculate KPI tiles data (cost of violations, OT costs, total hours by type).
+    - [x] 3.5.2 Function to generate data for Staffing Density Heat-Map (dynamic period, hourly counts).
+    - [x] 3.5.3 Function to compile list of general compliance violations.
+    - [x] 3.5.4 Function to generate employee-specific summary table data (hours breakdown, violations).
+    - [x] 3.5.5 Function to provide generic actionable advice text for each violation type.
   - [ ] 3.6 Integrate parsing, compliance checks, and report data generation in `analysis.py` endpoint.
 - [ ] 4.0 Implement Frontend: Report Generation and Display
   - [ ] 4.1 Create `ReportDisplay.tsx` component to render the analysis results (FR-6).

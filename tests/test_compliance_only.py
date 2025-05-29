@@ -1,8 +1,38 @@
 #!/usr/bin/env python3
 """
-Compliance Rules Test Script
-Tests the compliance checking functionality with manually created punch events
-based on the data structure from the CSV file.
+Compliance Rules Test Script (Isolated Testing)
+
+This script tests the compliance checking functionality in isolation using manually 
+created punch events. It validates that the compliance rules logic works correctly
+without dependencies on LLM processing or external APIs.
+
+What this test validates:
+- ✅ Meal break violation detection
+- ✅ Rest break violation detection  
+- ✅ Daily overtime detection (time-and-a-half and double-time)
+- ✅ Weekly overtime detection
+- ✅ Duplicate employee detection and consolidation
+- ✅ Cost calculations for all violation types
+- ✅ Wage determination logic
+
+Test Strategy:
+- Uses manually crafted punch events based on real CSV data patterns
+- Tests realistic scenarios from actual timesheet data
+- Independent of LLM processing - purely tests compliance logic
+- Creates comprehensive test cases for edge cases and violations
+
+Test Data:
+- Employee BB (Cashier): Split shift with potential meal break issues
+- Employee FM (Cook): Regular shift + overtime day (12+ hours)  
+- Employee FA (Shift Lead): Very long shift (11.5+ hours) with no breaks
+
+Usage:
+    python tests/test_compliance_only.py
+
+Related Files:
+- backend/app/core/compliance_rules.py - Contains all compliance detection logic
+- backend/app/tests/core/test_compliance_rules.py - Unit tests for compliance rules
+- backend/app/tests/core/8.05-short.csv - Real data that inspired these test cases
 """
 
 import sys
