@@ -1,5 +1,6 @@
 import os
 import sys
+import time
 from dotenv import load_dotenv
 # Pillow is not strictly needed here anymore if MIME type is passed in and validated upstream
 # import Image 
@@ -7,6 +8,7 @@ import io # Added for handling bytes for openpyxl
 import asyncio
 import json
 from typing import List, Optional, Dict, Any, Union # Added Dict, Any, Union
+import re
 
 import openpyxl # Added for Excel processing
 
@@ -22,6 +24,56 @@ from llm_utils.google_utils import get_gemini_response_with_function_calling
 
 # Load environment variables
 load_dotenv()
+
+def load_config() -> Dict[str, Any]:
+    """
+    Load configuration from config.json file.
+    
+    Returns:
+        Dictionary containing configuration settings
+    """
+    try:
+        # Look for config.json in the project root (parent of backend)
+        config_path = os.path.join(parent_dir, "config.json")
+        if not os.path.exists(config_path):
+            # Fallback to looking in current directory
+            config_path = os.path.join(os.getcwd(), "config.json")
+        
+        if os.path.exists(config_path):
+            with open(config_path, 'r') as f:
+                return json.load(f)
+        else:
+            print(f"[DEBUG] Config file not found at {config_path}, using defaults")
+            return {}
+    except Exception as e:
+        print(f"[DEBUG] Error loading config: {e}, using defaults")
+        return {}
+
+def get_function_calling_model() -> str:
+    """
+    Get the function calling model from config, with fallbacks.
+    
+    Returns:
+        Model name to use for function calling
+    """
+    # First check environment variable override (for testing)
+    env_override = os.getenv("LLM_MODEL_OVERRIDE")
+    if env_override:
+        print(f"[DEBUG] Using model from environment override: {env_override}")
+        return env_override
+    
+    # Load from config file
+    config = load_config()
+    function_calling_model = config.get("google", {}).get("function_calling_model")
+    
+    if function_calling_model:
+        print(f"[DEBUG] Using function calling model from config: {function_calling_model}")
+        return function_calling_model
+    
+    # Final fallback
+    fallback_model = "gemini-2.0-flash-exp"
+    print(f"[DEBUG] No config found, using fallback model: {fallback_model}")
+    return fallback_model
 
 def pydantic_to_gemini_tool_dict(pydantic_model_cls, tool_name: str, tool_description: str) -> Dict[str, Any]:
     """
@@ -112,262 +164,187 @@ def pydantic_to_gemini_tool_dict(pydantic_model_cls, tool_name: str, tool_descri
 
 async def parse_file_to_structured_data(file_bytes: bytes, mime_type: str, original_filename: str, debug_dir: str = None) -> LLMProcessingOutput:
     """
-    Sends raw file content (image, PDF, text, or pre-processed Excel) to a multi-modal LLM 
-    for direct parsing into a structured Pydantic schema using function calling,
-    leveraging the enhanced utility in llm_utils.google_utils.
-
+    Parse a file (CSV, XLSX, PDF, image, or text) to structured timesheet data using LLM.
+    
+    This function implements task 3.3.2 by:
+    1. Handling various file types and converting them to appropriate formats for LLM processing
+    2. Using function calling with Pydantic schemas to get structured data from the LLM
+    3. Implementing retry logic for LLM API failures
+    4. Returning structured punch event data or parsing issues
+    
     Args:
-        file_bytes: The raw bytes of the file.
-        mime_type: The MIME type of the file (e.g., 'image/png', 'application/pdf', 'text/csv', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet').
-        original_filename: The name of the original file, for context.
-        debug_dir: The directory to save debug files (optional).
-
+        file_bytes: Raw file content as bytes
+        mime_type: MIME type of the file (e.g., 'text/csv', 'application/pdf')
+        original_filename: Original filename for context and debugging
+        debug_dir: Optional directory to save debug information
+        
     Returns:
-        An LLMProcessingOutput object with the parsed data.
-
+        LLMProcessingOutput containing parsed punch events and any parsing issues
+        
     Raises:
-        ValueError: If the MIME type is unsupported or if text/Excel content cannot be decoded/parsed.
-        RuntimeError: If LLM interaction fails or data cannot be normalized.
+        ValueError: For unsupported file types or invalid file content
+        RuntimeError: For LLM processing failures or unexpected errors
     """
     
-    # Initialize model override (can be updated for specific file types)
-    model_override = None
+    total_start_time = time.time()
+    print(f"[DEBUG] Starting parse_file_to_structured_data for {original_filename}")
     
-    tool_name = "timesheet_data_extractor"
-    tool_description = f"Extracts structured timesheet data (employee punch events and parsing issues) directly from the content of the provided file named '{original_filename}' (MIME type: {mime_type})."
+    # Validate MIME type and file extension
+    supported_mime_types = {
+        'text/csv', 'text/plain', 'application/csv', 'application/vnd.ms-excel',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'application/pdf', 'application/octet-stream'
+    }
     
-    timesheet_tool_dict = pydantic_to_gemini_tool_dict(LLMProcessingOutput, tool_name, tool_description)
-
-    # Save debug information if debug_dir is provided
-    if debug_dir:
-        import json
-        os.makedirs(debug_dir, exist_ok=True)
-        
-        # Save function declaration
-        with open(os.path.join(debug_dir, "function_declaration.json"), 'w') as f:
-            json.dump(timesheet_tool_dict, f, indent=2)
-        
-        # Save schema information
-        schema_info = {
-            "tool_name": tool_name,
-            "tool_description": tool_description,
-            "pydantic_schema": LLMProcessingOutput.model_json_schema(),
-            "punch_event_schema": LLMParsedPunchEvent.model_json_schema()
-        }
-        with open(os.path.join(debug_dir, "schema_info.json"), 'w') as f:
-            json.dump(schema_info, f, indent=2)
-        
-        print(f"[DEBUG] Function declaration saved to {debug_dir}/function_declaration.json")
-
-    prompt_intro = f"""You are a timesheet data extraction specialist. Your task is to analyze the provided timesheet file and extract ALL individual employee punch events.
-
-IMPORTANT: You MUST use the '{tool_name}' function to return your findings. Do not provide a text response.
-
-CRITICAL: Extract ALL punch events from the entire timesheet. Look for every single clock in, clock out, break start, break end entry for every employee. The timesheet may contain hundreds of entries - extract them all.
-
-File to analyze: '{original_filename}' (MIME type: {mime_type})
-
-For each punch event, extract:
-- Employee name/identifier as it appears in the file
-- Exact timestamp of each punch (clock in, clock out, break start, break end, etc.)
-- Type of punch (Clock In, Clock Out, Break Start, Break End, Lunch Start, Lunch End, etc.)
-- Any additional details like role, department, or notes if present
-
-Return ALL punch events in the punch_events array. Do not stop at the first few - process the entire timesheet data.
-
-Also note any parsing issues you encounter (unclear data, missing information, formatting problems).
-
-Use the '{tool_name}' function with your extracted data now:"""
+    supported_image_types = {
+        'image/jpeg', 'image/jpg', 'image/png', 'image/tiff', 'image/bmp', 'image/gif'
+    }
     
-    prepared_prompt_parts: List[Union[str, Dict[str, Any]]] = [prompt_intro]
-
-    if mime_type.startswith("image/") or mime_type == "application/pdf":
-        prepared_prompt_parts.append({"mime_type": mime_type, "data": file_bytes})
-    elif mime_type.startswith("text/") or mime_type == "text/csv" or mime_type == "application/csv":
-        try:
-            text_content = file_bytes.decode('utf-8')
-            prepared_prompt_parts.append("\n\n--- Timesheet Text Content ---\n" + text_content + "\n--- End of Text Content ---")
-        except UnicodeDecodeError as e:
-            raise ValueError(f"Could not decode text-based file '{original_filename}' as UTF-8: {e}")
-    elif mime_type in ["application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/vnd.ms-excel"]:
-        try:
-            workbook = openpyxl.load_workbook(io.BytesIO(file_bytes), data_only=True) # data_only=True to get values not formulas
-            sheet = workbook.active # Or iterate through workbook.sheetnames and workbook[sheet_name]
-            
-            extracted_text_lines = []
-            data_row_count = 0
-            header_found = False
-            
-            for row_idx, row in enumerate(sheet.iter_rows()):
-                row_values = []
-                for cell in row:
-                    cell_value = cell.value
-                    if cell_value is None:
-                        row_values.append("") # Represent empty cells as empty strings
-                    else:
-                        row_values.append(str(cell_value).strip()) # Convert to string and strip whitespace
-                
-                row_text = ",".join(row_values)
-                
-                # Skip completely empty rows
-                if not row_text.strip() or row_text.replace(",", "").strip() == "":
-                    continue
-                
-                # Look for header-like content or employee data
-                row_lower = row_text.lower()
-                if any(keyword in row_lower for keyword in ["employee", "name", "clock", "time", "punch", "in", "out", "date", "shift"]):
-                    header_found = True
-                
-                # If we found header-like content, start including subsequent rows
-                if header_found:
-                    extracted_text_lines.append(row_text)
-                    if any(char.isdigit() for char in row_text) and ("am" in row_lower or "pm" in row_lower or ":" in row_text):
-                        data_row_count += 1
-                
-                # Continue processing all rows (removed the 50-row limit for complete processing)
-                # if data_row_count >= 50:  # Removed this limit
-                #     extracted_text_lines.append("... [Additional timesheet data truncated for processing]")
-                #     break
-            
-            excel_text_content = "\n".join(extracted_text_lines)
-            
-            if not excel_text_content.strip():
-                print(f"Warning: Excel file '{original_filename}' ({mime_type}) was parsed but yielded no text content.")
-                return LLMProcessingOutput(punch_events=[], parsing_issues=[f"Excel file '{original_filename}' parsed to empty text content."])
-
-            # Determine model override for large content before processing
-            if len(excel_text_content) > 10000:  # Use Pro model for larger content
-                try:
-                    import json
-                    config_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'config.json')
-                    with open(config_path, 'r') as f:
-                        config = json.load(f)
-                        model_override = config.get("google", {}).get("high_model")
-                        print(f"[DEBUG] Using high-power model for large content: {model_override}")
-                except Exception:
-                    pass  # Fall back to default model if config loading fails
-
-            # Check if content is too large for single processing
-            MAX_CHARS = 15000  # Reduced limit for function calling reliability
-            FORCE_CHUNK_ROWS = 100  # Always chunk if more than 100 data rows
-            
-            if len(excel_text_content) > MAX_CHARS or data_row_count > FORCE_CHUNK_ROWS:
-                print(f"Excel content requires chunking: {len(excel_text_content)} chars, {data_row_count} data rows")
-                
-                # Split into chunks by lines to maintain data integrity
-                lines = extracted_text_lines
-                chunk_size = max(20, min(50, len(lines) // 5))  # Smaller chunks: 20-50 lines per chunk
-                chunks = [lines[i:i + chunk_size] for i in range(0, len(lines), chunk_size)]
-                
-                print(f"Processing {len(chunks)} chunks of approximately {chunk_size} lines each")
-                
-                all_punch_events = []
-                all_parsing_issues = []
-                
-                for chunk_idx, chunk_lines in enumerate(chunks):
-                    chunk_content = "\n".join(chunk_lines)
-                    
-                    # Skip chunks that are too small or don't contain useful data
-                    if len(chunk_content.strip()) < 50 or not any(
-                        keyword in chunk_content.lower() 
-                        for keyword in ["am", "pm", ":", "clock", "punch", "in", "out"]
-                    ):
-                        print(f"Skipping chunk {chunk_idx + 1} - insufficient data")
-                        continue
-                    
-                    chunk_prompt = prompt_intro.replace(
-                        "extract ALL individual employee punch events",
-                        f"extract all punch events from this chunk ({chunk_idx + 1}/{len(chunks)})"
-                    ).replace(
-                        "Return ALL punch events in the punch_events array. Do not stop at the first few - process the entire timesheet data.",
-                        f"Return all punch events found in this specific chunk. Focus on quality over quantity for this chunk."
-                    )
-                    
-                    print(f"Processing chunk {chunk_idx + 1}/{len(chunks)} ({len(chunk_content)} chars)")
-                    
-                    chunk_prompt_parts = [
-                        chunk_prompt,
-                        f"\n\n--- Excel Chunk {chunk_idx + 1}/{len(chunks)} ---\n" + chunk_content + "\n--- End of Chunk ---"
-                    ]
-                    
-                    try:
-                        chunk_response = get_gemini_response_with_function_calling(
-                            prompt_parts=chunk_prompt_parts,
-                            tools=[timesheet_tool_dict],
-                            model_name_override=model_override,
-                            max_retries=2
-                        )
-                        
-                        if isinstance(chunk_response, dict):
-                            # Process chunk response same as main response
-                            if "punch_events" in chunk_response:
-                                chunk_events = chunk_response.get("punch_events", [])
-                                chunk_issues = chunk_response.get("parsing_issues", [])
-                                all_punch_events.extend(chunk_events)
-                                all_parsing_issues.extend(chunk_issues)
-                                print(f"  Chunk {chunk_idx + 1}: Found {len(chunk_events)} events")
-                            elif "employee_identifier_in_file" in chunk_response:
-                                all_punch_events.append(chunk_response)
-                                print(f"  Chunk {chunk_idx + 1}: Found 1 event")
-                        elif isinstance(chunk_response, str) and not chunk_response.startswith("Error:"):
-                            # LLM returned text instead of function call - this is OK for chunks
-                            print(f"  Chunk {chunk_idx + 1}: LLM returned text response, no events extracted")
-                            all_parsing_issues.append(f"Chunk {chunk_idx + 1}: LLM returned text instead of function call")
-                    
-                    except Exception as chunk_error:
-                        print(f"Error processing chunk {chunk_idx + 1}: {chunk_error}")
-                        all_parsing_issues.append(f"Error processing chunk {chunk_idx + 1}: {str(chunk_error)}")
-                
-                print(f"Chunk processing complete. Total events: {len(all_punch_events)}")
-                
-                # Save chunk processing debug info
-                if debug_dir:
-                    chunk_debug = {
-                        "total_chunks": len(chunks),
-                        "total_events": len(all_punch_events),
-                        "total_issues": len(all_parsing_issues),
-                        "chunk_size": chunk_size,
-                        "original_data_rows": data_row_count,
-                        "original_content_length": len(excel_text_content)
-                    }
-                    with open(os.path.join(debug_dir, "chunk_processing.json"), 'w') as f:
-                        json.dump(chunk_debug, f, indent=2)
-                
-                return LLMProcessingOutput(
-                    punch_events=all_punch_events,
-                    parsing_issues=all_parsing_issues
-                )
-            else:
-                # Process normally if content is small enough
-                print(f"Processing single request: {len(excel_text_content)} chars, {data_row_count} data rows")
-                excel_text_content = excel_text_content[:MAX_CHARS] + ("\n... [TRUNCATED]" if len(excel_text_content) > MAX_CHARS else "")
-
-            prepared_prompt_parts.append("\n\n--- Extracted Excel Content (CSV-like format) ---\n" + excel_text_content + "\n--- End of Excel Content ---")
-            print(f"Successfully pre-processed Excel file '{original_filename}' ({mime_type}) to text for LLM. Data rows found: {data_row_count}")
-        except Exception as e:
-            # Catching general exceptions from openpyxl loading/parsing
-            raise ValueError(f"Failed to parse Excel file '{original_filename}' ({mime_type}). Error: {e}")
-    else:
-        raise ValueError(f"Unsupported MIME type for LLM processing: {mime_type}. Supported: image/*, application/pdf, text/*, text/csv, Excel.")
-
+    # Check if it's a supported type
+    is_supported = (
+        mime_type in supported_mime_types or 
+        mime_type in supported_image_types or
+        (mime_type and mime_type.startswith('image/'))
+    )
+    
+    if not is_supported:
+        raise ValueError(f"Unsupported MIME type: {mime_type}. Supported types: CSV, XLSX, PDF, images, and text files.")
+    
+    # Determine if we need to handle this as an image or text-based file
+    is_image = mime_type in supported_image_types or (mime_type and mime_type.startswith('image/'))
+    
     try:
-        print(f"Calling LLM utility for file: {original_filename} (MIME: {mime_type})")
-        print(f"[DEBUG] Prepared prompt parts: {len(prepared_prompt_parts)} parts")
-        for i, part in enumerate(prepared_prompt_parts):
-            if isinstance(part, str):
-                print(f"[DEBUG] Part {i + 1}: String with {len(part)} characters")
+        # Create debug directory if specified
+        if debug_dir:
+            os.makedirs(debug_dir, exist_ok=True)
+            print(f"[DEBUG] Created debug directory: {debug_dir}")
+        
+        # Prepare prompt parts for LLM
+        prepared_prompt_parts = []
+        
+        if is_image:
+            # Handle image files (OCR + parsing)
+            print(f"Processing image file: {original_filename} (MIME: {mime_type})")
+            
+            # Add text instruction
+            image_prompt = f"""
+Please analyze this timesheet image and extract all employee time punch data. The image shows a timesheet for: {original_filename}
+
+Extract the following information for each time punch:
+- Employee name/identifier
+- Date of the punch
+- Time of the punch (clock in/out)
+- Role/department if visible
+- Any break information if available
+
+Please be thorough and extract all visible time entries. If any data is unclear or ambiguous, note it in the parsing issues.
+"""
+            prepared_prompt_parts.append(image_prompt)
+            
+            # Add image data
+            prepared_prompt_parts.append({
+                "mime_type": mime_type,
+                "data": file_bytes
+            })
+            
+        else:
+            # Handle text-based files (CSV, XLSX, PDF, TXT)
+            print(f"Processing text-based file: {original_filename} (MIME: {mime_type})")
+            
+            if mime_type == 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':
+                # Handle XLSX files
+                try:
+                    import pandas as pd
+                    import io
+                    
+                    # Read XLSX file
+                    excel_data = pd.read_excel(io.BytesIO(file_bytes), sheet_name=None)  # Read all sheets
+                    
+                    # Convert to text representation
+                    text_content = f"Excel file: {original_filename}\n\n"
+                    for sheet_name, df in excel_data.items():
+                        text_content += f"Sheet: {sheet_name}\n"
+                        text_content += df.to_string(index=False, na_rep='')
+                        text_content += "\n\n"
+                    
+                    if debug_dir:
+                        with open(os.path.join(debug_dir, "excel_content.txt"), 'w', encoding='utf-8') as f:
+                            f.write(text_content)
+                    
+                except Exception as e:
+                    print(f"Error reading XLSX file: {e}")
+                    # Fallback to treating as binary data for LLM
+                    text_content = f"XLSX file content (binary): {original_filename}\nNote: Could not parse as Excel file due to: {e}"
+                    
+            elif mime_type == 'application/pdf':
+                # Handle PDF files - for now, treat as binary and let LLM handle
+                text_content = f"PDF file: {original_filename}\nNote: PDF parsing not yet implemented. Please convert to CSV or image format."
+                
             else:
-                print(f"[DEBUG] Part {i + 1}: Dict with keys: {list(part.keys())}")
+                # Handle CSV, TXT, and other text files
+                try:
+                    # Try to decode as text
+                    text_content = file_bytes.decode('utf-8')
+                except UnicodeDecodeError:
+                    try:
+                        # Try other common encodings
+                        text_content = file_bytes.decode('latin-1')
+                    except UnicodeDecodeError:
+                        text_content = file_bytes.decode('utf-8', errors='replace')
+                
+                if debug_dir:
+                    with open(os.path.join(debug_dir, "file_content.txt"), 'w', encoding='utf-8') as f:
+                        f.write(text_content)
+            
+            print(f"[DEBUG] Processing full file without chunking")
+            print(f"[DEBUG] Content size: {len(text_content)} characters")
+            print(f"[DEBUG] Content lines: {len(text_content.split('\n'))}")
+            
+            # Create prompt for text-based files
+            text_prompt = f"""
+You are analyzing a complete timesheet file. This file contains ALL the time punch data for multiple employees.
+
+CRITICAL TASK: Extract EVERY SINGLE time punch event from this file.
+
+File: {original_filename}
+
+INSTRUCTIONS:
+1. Read through the ENTIRE file content carefully
+2. Find ALL time punch events (clock in, clock out, breaks)
+3. Each time entry = one event (even if multiple times appear on same line)
+4. Do NOT skip any employees or time entries
+5. Extract ALL events - missing events causes data loss
+
+File content:
+{text_content}
+
+For each time punch event, extract:
+- Employee name/identifier exactly as it appears
+- Date (convert to YYYY-MM-DD format)
+- Time with timezone (convert to YYYY-MM-DDTHH:MM:SSZ)  
+- Punch type: "clock_in", "clock_out", "break_start", "break_end", or "unknown"
+- Role/department if available
+- Any notes
+
+Be exhaustive - extract every single time punch event from this file.
+"""
+            prepared_prompt_parts.append(text_prompt)
         
-        # model_override was already determined earlier for Excel files
+        # Create the tool definition for structured output
+        timesheet_tool_dict = pydantic_to_gemini_tool_dict(
+            LLMProcessingOutput,
+            "timesheet_data_extractor", 
+            "Extract ALL time punch events from complete timesheet file. Must find every single event to avoid data loss."
+        )
         
-        print(f"[DEBUG] Creating tool dictionary...")
+        # Optional model override for testing - defaults to Gemini 2.0 Flash
+        model_override = get_function_calling_model()
+        
+        print(f"[DEBUG] Tool definition created:")
         print(f"[DEBUG] Tool name: {timesheet_tool_dict.get('name')}")
-        print(f"[DEBUG] Tool description length: {len(timesheet_tool_dict.get('description', ''))}")
-        print(f"[DEBUG] Tool parameters keys: {list(timesheet_tool_dict.get('parameters', {}).keys())}")
+        print(f"[DEBUG] Using model: {model_override}")
         
         print(f"[DEBUG] About to call get_gemini_response_with_function_calling...")
-        # Call the enhanced utility from llm_utils
         
         # Save debug prompt if debug_dir is provided
         if debug_dir:
@@ -393,14 +370,19 @@ Use the '{tool_name}' function with your extracted data now:"""
                 json.dump(prompt_debug, f, indent=2)
             print(f"[DEBUG] Prompt debug info saved to {debug_dir}/prompt_debug.json")
         
+        start_time = time.time()
         llm_response_data = get_gemini_response_with_function_calling(
             prompt_parts=prepared_prompt_parts,
             tools=[timesheet_tool_dict],
             model_name_override=model_override,
-            max_retries=2
+            max_retries=3,
+            temperature=0.0  # Deterministic for consistent results
         )
+        end_time = time.time()
+        duration = round(end_time - start_time, 2)
         
         print(f"[DEBUG] LLM call completed, response type: {type(llm_response_data)}")
+        print(f"[DEBUG] LLM processing took {duration} seconds")
         if isinstance(llm_response_data, str):
             print(f"[DEBUG] String response length: {len(llm_response_data)}")
         elif isinstance(llm_response_data, dict):
@@ -411,7 +393,7 @@ Use the '{tool_name}' function with your extracted data now:"""
             # Construct the Pydantic object from the LLM's arguments
             try:
                 print(f"[DEBUG] LLM response keys: {list(llm_response_data.keys())}")
-                print(f"[DEBUG] LLM response data: {llm_response_data}")
+                print(f"[DEBUG] Processing {len(llm_response_data.get('punch_events', []))} events")
                 
                 # Check if the response is a single punch event or the expected array format
                 if "punch_events" in llm_response_data:
@@ -442,6 +424,12 @@ Use the '{tool_name}' function with your extracted data now:"""
                     )
                 
                 print(f"Successfully parsed data for {original_filename} via LLM utility function call.")
+                print(f"[DEBUG] Final result: {len(parsed_output.punch_events)} events, {len(parsed_output.parsing_issues)} issues")
+                
+                total_end_time = time.time()
+                total_duration = round(total_end_time - total_start_time, 2)
+                print(f"[DEBUG] Total processing time for {original_filename}: {total_duration} seconds")
+                
                 return parsed_output
             except Exception as pydantic_error: # Catch errors during Pydantic model instantiation
                 error_msg = f"LLM returned function call arguments, but failed to create Pydantic model for '{original_filename}'. Error: {pydantic_error}. LLM Args: {llm_response_data}"
@@ -455,12 +443,23 @@ Use the '{tool_name}' function with your extracted data now:"""
         elif isinstance(llm_response_data, str):
             # LLM returned text instead of calling the function.
             # This is unexpected if a tool was provided and the prompt was clear.
-            error_msg = f"LLM did not use the function call for '{original_filename}' as expected, returned text instead: '{llm_response_data[:500]}...'"
+            # Check if it's a Google API error specifically
+            if "Google API Error" in llm_response_data and "500 INTERNAL" in llm_response_data:
+                error_msg = f"Google's AI service is temporarily unavailable. Please try again in a few minutes. (Technical details: {llm_response_data[:200]}...)"
+            elif "Google API Error" in llm_response_data:
+                error_msg = f"AI processing service error. Please try again. (Technical details: {llm_response_data[:200]}...)"
+            else:
+                error_msg = f"LLM did not use the function call for '{original_filename}' as expected, returned text instead: '{llm_response_data[:500]}...'"
             print(error_msg)
-            # Consider if this text might contain parsing_issues from the LLM.
-            # For now, treating as a failure to adhere to function call instruction.
-            # You could potentially try to parse this text for fallback `parsing_issues`.
-            return LLMProcessingOutput(punch_events=[], parsing_issues=[error_msg]) # Or raise RuntimeError
+            
+            total_end_time = time.time()
+            total_duration = round(total_end_time - total_start_time, 2)
+            print(f"[DEBUG] Total processing time for {original_filename} (LLM text response): {total_duration} seconds")
+            
+            return LLMProcessingOutput(
+                punch_events=[],
+                parsing_issues=[error_msg]
+            )
         else:
             # Unexpected response type from utility
             error_msg = f"Unexpected response type from LLM utility for '{original_filename}': {type(llm_response_data)}"
@@ -468,10 +467,19 @@ Use the '{tool_name}' function with your extracted data now:"""
             raise RuntimeError(error_msg)
 
     except ValueError as ve: # Re-raise ValueErrors from MIME type handling or decoding
+        total_end_time = time.time()
+        total_duration = round(total_end_time - total_start_time, 2)
+        print(f"[DEBUG] Total processing time for {original_filename} (ValueError): {total_duration} seconds")
         raise ve 
     except RuntimeError as re: # Re-raise RuntimeErrors from LLM utility or Pydantic parsing
+        total_end_time = time.time()
+        total_duration = round(total_end_time - total_start_time, 2)
+        print(f"[DEBUG] Total processing time for {original_filename} (RuntimeError): {total_duration} seconds")
         raise re
     except Exception as e:
+        total_end_time = time.time()
+        total_duration = round(total_end_time - total_start_time, 2)
+        print(f"[DEBUG] Total processing time for {original_filename} (Exception): {total_duration} seconds")
         error_msg = f"Error during LLM processing for {original_filename} in parse_file_to_structured_data: {e} (Type: {e.__class__.__name__})"
         print(error_msg)
         raise RuntimeError(error_msg)

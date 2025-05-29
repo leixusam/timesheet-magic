@@ -124,7 +124,8 @@ def get_gemini_response_with_function_calling(
     tools: Optional[List[Dict[str, Any]]] = None, # Tools as list of dicts, SDK handles conversion
     model_name_override: Optional[str] = None,
     max_retries: int = 3,
-    initial_backoff_seconds: float = 1.0
+    initial_backoff_seconds: float = 1.0,
+    temperature: Optional[float] = None
 ) -> Union[Dict[str, Any], str]:
     """
     Gets a response from Google Gemini API, supporting multi-modal input, function calling, and retries.
@@ -136,6 +137,7 @@ def get_gemini_response_with_function_calling(
         model_name_override: Optional model name to use (e.g., 'gemini-1.5-pro-latest').
         max_retries: Maximum number of retries for retryable errors.
         initial_backoff_seconds: Initial backoff time for retries.
+        temperature: Optional temperature parameter for controlling randomness (0.0 for deterministic).
 
     Returns:
         A dictionary with function call arguments if a function is called by the LLM.
@@ -182,10 +184,20 @@ def get_gemini_response_with_function_calling(
                     print(f"[DEBUG] Tool {i + 1} converted successfully")
                 
                 print(f"[DEBUG] Creating GenerateContentConfig with {len(converted_tools)} tools...")
-                config = genai_types.GenerateContentConfig(tools=converted_tools)
+                config_kwargs = {"tools": converted_tools}
+                if temperature is not None:
+                    config_kwargs["temperature"] = temperature
+                    print(f"[DEBUG] Setting temperature to {temperature}")
+                config = genai_types.GenerateContentConfig(**config_kwargs)
                 print(f"[DEBUG] Config created successfully")
             else:
-                print(f"[DEBUG] No tools provided, config will be None")
+                print(f"[DEBUG] No tools provided, creating config for temperature if needed")
+                if temperature is not None:
+                    config = genai_types.GenerateContentConfig(temperature=temperature)
+                    print(f"[DEBUG] Created config with temperature {temperature}")
+                else:
+                    config = None
+                    print(f"[DEBUG] Config will be None")
             
             print(f"[DEBUG] About to call client.models.generate_content with model: {model_path_for_api}")
             print(f"[DEBUG] Prompt parts count: {len(prompt_parts)}")

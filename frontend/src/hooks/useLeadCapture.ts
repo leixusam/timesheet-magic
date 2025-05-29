@@ -111,7 +111,7 @@ export function useLeadCapture(initialData: LeadData) {
     const newErrors: Partial<Record<keyof LeadData, string>> = {};
     if (!leadData.managerName) newErrors.managerName = 'Manager Name is required.';
     if (!leadData.managerEmail) newErrors.managerEmail = 'Manager Email is required.';
-    else if (!/S+@S+\.\S+/.test(leadData.managerEmail)) newErrors.managerEmail = 'Manager Email is invalid.';
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(leadData.managerEmail)) newErrors.managerEmail = 'Manager Email is invalid.';
     if (!leadData.managerPhone) newErrors.managerPhone = 'Manager Phone is required.';
     if (!leadData.storeName) newErrors.storeName = 'Store Name is required.';
     if (!leadData.storeAddress) newErrors.storeAddress = 'Store Physical Address is required.';

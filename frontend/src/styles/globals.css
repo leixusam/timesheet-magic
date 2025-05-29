@@ -1,0 +1,233 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  /* Improved Typography Scale */
+  html {
+    font-size: 16px; /* Base font size increased from default 14px */
+    line-height: 1.6; /* Improved line height for better readability */
+  }
+  
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+      'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+      sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    color: #1f2937; /* gray-800 for better contrast */
+    background-color: #f9fafb; /* gray-50 for softer background */
+    line-height: 1.6;
+  }
+
+  /* Typography hierarchy improvements */
+  h1 {
+    font-size: 2.25rem; /* 36px */
+    line-height: 1.2;
+    font-weight: 700;
+    letter-spacing: -0.025em;
+  }
+
+  h2 {
+    font-size: 1.875rem; /* 30px */
+    line-height: 1.3;
+    font-weight: 600;
+    letter-spacing: -0.025em;
+  }
+
+  h3 {
+    font-size: 1.5rem; /* 24px */
+    line-height: 1.4;
+    font-weight: 600;
+  }
+
+  h4 {
+    font-size: 1.25rem; /* 20px */
+    line-height: 1.4;
+    font-weight: 600;
+  }
+
+  h5 {
+    font-size: 1.125rem; /* 18px */
+    line-height: 1.5;
+    font-weight: 500;
+  }
+
+  h6 {
+    font-size: 1rem; /* 16px */
+    line-height: 1.5;
+    font-weight: 500;
+  }
+
+  /* Improved paragraph and text styles */
+  p {
+    font-size: 1rem; /* 16px */
+    line-height: 1.7;
+    margin-bottom: 1rem;
+  }
+
+  .text-sm {
+    font-size: 0.875rem; /* 14px */
+    line-height: 1.6;
+  }
+
+  .text-xs {
+    font-size: 0.75rem; /* 12px */
+    line-height: 1.5;
+  }
+
+  /* Better focus states for accessibility */
+  *:focus-visible {
+    outline: 2px solid #3b82f6;
+    outline-offset: 2px;
+    border-radius: 0.125rem;
+  }
+}
+
+@layer components {
+  /* Consistent button styles and hover states - Task 3.8 */
+  .btn-primary {
+    @apply px-4 py-2 bg-blue-600 text-white font-medium rounded-lg 
+           hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 
+           focus:ring-offset-2 transition-colors duration-200 ease-in-out;
+  }
+
+  .btn-secondary {
+    @apply px-4 py-2 bg-gray-100 text-gray-700 font-medium rounded-lg 
+           hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-500 
+           focus:ring-offset-2 transition-colors duration-200 ease-in-out;
+  }
+
+  .btn-danger {
+    @apply px-4 py-2 bg-red-600 text-white font-medium rounded-lg 
+           hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 
+           focus:ring-offset-2 transition-colors duration-200 ease-in-out;
+  }
+
+  .btn-link {
+    @apply font-medium text-blue-700 hover:text-blue-900 hover:underline 
+           focus:outline-none focus:underline 
+           transition-colors duration-150 ease-in-out;
+  }
+
+  .btn-sm {
+    @apply px-3 py-1.5 text-sm;
+  }
+
+  .btn-xs {
+    @apply px-2 py-1 text-xs font-medium;
+  }
+
+  /* Card components with consistent spacing - Task 3.4 */
+  .card {
+    @apply bg-white rounded-lg shadow-sm border border-gray-200 p-6;
+  }
+
+  .card-compact {
+    @apply bg-white rounded-lg shadow-sm border border-gray-200 p-4;
+  }
+
+  /* Violation card improvements - Task 3.3, 3.4, 3.5 */
+  .violation-card {
+    @apply max-w-4xl mx-auto mb-4 bg-white border border-gray-200 rounded-lg 
+           shadow-sm hover:shadow-md transition-all duration-200;
+  }
+
+  .violation-card-critical {
+    @apply border-l-4 border-l-red-500;
+  }
+
+  .violation-card-warning {
+    @apply border-l-4 border-l-orange-500;
+  }
+
+  .violation-card-info {
+    @apply border-l-4 border-l-yellow-500;
+  }
+
+  /* Hero section background pattern */
+  .bg-grid-pattern {
+    background-image: radial-gradient(circle, #e5e7eb 1px, transparent 1px);
+    background-size: 20px 20px;
+  }
+
+  /* Severity badges - Task 3.2 */
+  .badge-critical {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium 
+           bg-red-100 text-red-800;
+  }
+
+  .badge-warning {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium 
+           bg-orange-100 text-orange-800;
+  }
+
+  .badge-info {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium 
+           bg-yellow-100 text-yellow-800;
+  }
+
+  .badge-success {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium 
+           bg-green-100 text-green-800;
+  }
+}
+
+/* Dark mode support - Task 3.6 */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --foreground-rgb: 255, 255, 255;
+    --background-start-rgb: 0, 0, 0;
+    --background-end-rgb: 0, 0, 0;
+  }
+
+  body {
+    color: rgb(var(--foreground-rgb));
+    background: linear-gradient(
+        to bottom,
+        transparent,
+        rgb(var(--background-end-rgb))
+      )
+      rgb(var(--background-start-rgb));
+  }
+
+  .card {
+    @apply bg-gray-800 border-gray-700 text-white;
+  }
+
+  .violation-card-critical {
+    @apply bg-red-900/20 border-l-red-400;
+  }
+
+  .violation-card-warning {
+    @apply bg-orange-900/20 border-l-orange-400;
+  }
+
+  .violation-card-info {
+    @apply bg-yellow-900/20 border-l-yellow-400;
+  }
+}
+
+/* Responsive design improvements - Task 3.7 */
+@media (max-width: 640px) {
+  /* Mobile-first responsive design */
+  .violation-card {
+    @apply max-w-full mx-0 p-3 text-sm;
+  }
+
+  h1 {
+    font-size: 2rem; /* 32px on mobile */
+  }
+
+  h2 {
+    font-size: 1.5rem; /* 24px on mobile */
+  }
+
+  h3 {
+    font-size: 1.25rem; /* 20px on mobile */
+  }
+
+  .card {
+    @apply p-4; /* Reduced padding on mobile */
+  }
+} 

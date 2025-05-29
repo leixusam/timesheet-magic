@@ -3,14 +3,72 @@
 import { useState } from 'react';
 
 interface UseFileUploadOptions {
-  // onUploadSuccess?: (analysisId: string) => void; // Callback for when analysis ID is received
+  // onUploadSuccess?: (analysisReport: FinalAnalysisReport) => void;
   // onUploadError?: (error: Error) => void;
+}
+
+// Define the analysis report interface to match backend schema
+interface ViolationInstance {
+  rule_id: string;
+  rule_description: string;
+  employee_identifier: string;
+  date_of_violation: string;
+  specific_details: string;
+  suggested_action_generic: string;
+}
+
+interface EmployeeReportDetails {
+  employee_identifier: string;
+  roles_observed?: string[];
+  departments_observed?: string[];
+  total_hours_worked: number;
+  regular_hours: number;
+  overtime_hours: number;
+  double_overtime_hours: number;
+  violations_for_employee: ViolationInstance[];
+}
+
+interface ReportKPIs {
+  total_scheduled_labor_hours: number;
+  total_regular_hours: number;
+  total_overtime_hours: number;
+  total_double_overtime_hours: number;
+  estimated_overtime_cost?: number;
+  estimated_double_overtime_cost?: number;
+  compliance_risk_assessment?: string;
+  count_meal_break_violations: number;
+  count_rest_break_violations: number;
+  count_daily_overtime_violations: number;
+  count_weekly_overtime_violations: number;
+  count_daily_double_overtime_violations: number;
+  wage_data_source_note: string;
+}
+
+interface HeatMapDatapoint {
+  hour_timestamp: string;
+  employee_count: number;
+}
+
+interface FinalAnalysisReport {
+  request_id: string;
+  original_filename: string;
+  status: string;
+  status_message?: string;
+  kpis?: ReportKPIs;
+  staffing_density_heatmap?: HeatMapDatapoint[];
+  all_identified_violations?: ViolationInstance[];
+  employee_summaries?: EmployeeReportDetails[];
+  duplicate_name_warnings?: string[];
+  parsing_issues_summary?: string[];
+  overall_report_summary_text?: string;
 }
 
 export interface UploadProgress {
   isLoading: boolean;
   error: string | null;
-  analysisId: string | null; // Or whatever identifier your backend returns
+  analysisReport: FinalAnalysisReport | null;
+  isAnalyzing: boolean;
+  fileValidated: boolean;
 }
 
 export interface LeadSubmissionProgress {
@@ -23,7 +81,9 @@ export function useFileUpload(options?: UseFileUploadOptions) {
   const [uploadProgress, setUploadProgress] = useState<UploadProgress>({
     isLoading: false,
     error: null,
-    analysisId: null,
+    analysisReport: null,
+    isAnalyzing: false,
+    fileValidated: false,
   });
 
   const [leadSubmissionProgress, setLeadSubmissionProgress] = useState<LeadSubmissionProgress>({
@@ -32,65 +92,154 @@ export function useFileUpload(options?: UseFileUploadOptions) {
     isSuccess: false,
   });
 
-  const uploadFile = async (file: File): Promise<{ success: boolean; analysisId: string | null; error: string | null }> => {
-    setUploadProgress({ isLoading: true, error: null, analysisId: null });
+  const uploadFile = async (file: File): Promise<{ success: boolean; error: string | null }> => {
+    setUploadProgress({ 
+      isLoading: true, 
+      error: null, 
+      analysisReport: null, 
+      isAnalyzing: false,
+      fileValidated: false 
+    });
 
+    const maxSize = 10 * 1024 * 1024; // 10MB
+    if (file.size > maxSize) {
+      setUploadProgress({ 
+        isLoading: false, 
+        error: 'File size exceeds 10MB limit', 
+        analysisReport: null, 
+        isAnalyzing: false,
+        fileValidated: false 
+      });
+      return { success: false, error: 'File size exceeds 10MB limit' };
+    }
+
+    const allowedTypes = [
+      'text/csv',
+      'text/plain', // Sometimes CSV files are detected as text/plain
+      'application/csv', // Alternative CSV MIME type
+      'application/vnd.ms-excel', // Sometimes used for CSV
+      'application/octet-stream', // Generic binary - often used when MIME type can't be determined
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'application/pdf',
+      'image/jpeg',
+      'image/png'
+    ];
+
+    // Additional check for CSV files based on file extension if MIME type is unclear
+    const isCSVFile = file.name.toLowerCase().endsWith('.csv');
+    const isTXTFile = file.name.toLowerCase().endsWith('.txt');
+    const isValidType = allowedTypes.includes(file.type) || 
+                       (file.type === 'text/plain' && (isCSVFile || isTXTFile)) ||
+                       (file.type === 'application/octet-stream' && isCSVFile) ||
+                       (file.type === '' && (isCSVFile || isTXTFile)); // Some systems don't set MIME type
+
+    if (!isValidType) {
+      setUploadProgress({ 
+        isLoading: false, 
+        error: `Invalid file type: ${file.type}. Please use CSV, XLSX, PDF, JPG, PNG, or TXT files.`, 
+        analysisReport: null, 
+        isAnalyzing: false,
+        fileValidated: false 
+      });
+      return { success: false, error: `Invalid file type: ${file.type}` };
+    }
+
+    setUploadProgress({ 
+      isLoading: false, 
+      error: null, 
+      analysisReport: null, 
+      isAnalyzing: true,
+      fileValidated: true 
+    });
+
+    startAnalysisInBackground(file);
+
+    return { success: true, error: null };
+  };
+
+  const startAnalysisInBackground = async (file: File) => {
     const formData = new FormData();
     formData.append('file', file);
-    // Note: LeadData is not sent here as per the new two-step flow.
-    // It will be sent in a separate step.
 
     try {
-      // We'll use the Next.js API route path.
-      // The actual backend endpoint might be different if you're proxying.
-      const response = await fetch('/api/analyze', { // Assuming Next.js API route
+      const response = await fetch('/api/analyze', {
         method: 'POST',
         body: formData,
-        // Headers might be needed, e.g., if your backend expects 'multipart/form-data'
-        // but fetch usually handles this with FormData.
       });
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ message: 'Failed to upload file. Server returned an error.' }));
-        throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+        try {
+          const errorData = await response.json();
+          // Check if error data contains a detailed error report
+          if (errorData.detail && typeof errorData.detail === 'object' && errorData.detail.status_message) {
+            setUploadProgress(prev => ({ 
+              ...prev, 
+              isAnalyzing: false, 
+              error: errorData.detail.status_message 
+            }));
+          } else {
+            const errorMessage = errorData.detail || errorData.message || 'Analysis failed';
+            setUploadProgress(prev => ({ 
+              ...prev, 
+              isAnalyzing: false, 
+              error: `Analysis failed: ${errorMessage}` 
+            }));
+          }
+        } catch {
+          setUploadProgress(prev => ({ 
+            ...prev, 
+            isAnalyzing: false, 
+            error: `Analysis failed with status ${response.status}` 
+          }));
+        }
+        return;
       }
 
-      const result = await response.json(); 
-      // Assuming the backend returns something like { analysisId: "some-uuid" }
-      // Or { message: "File received, processing started", analysisId: "..." }
+      const analysisReport: FinalAnalysisReport = await response.json();
 
-      setUploadProgress({ isLoading: false, error: null, analysisId: result.analysisId || null });
-      // if (options?.onUploadSuccess && result.analysisId) {
-      //   options.onUploadSuccess(result.analysisId);
-      // }
-      return { success: true, analysisId: result.analysisId || null, error: null };
+      // Check if the analysis itself failed, even though HTTP response was OK
+      if (analysisReport.status === 'error_parsing_failed' || analysisReport.status === 'error_analysis_failed') {
+        setUploadProgress(prev => ({ 
+          ...prev, 
+          isAnalyzing: false, 
+          error: analysisReport.status_message || 'Analysis failed due to processing errors' 
+        }));
+        return;
+      }
+
+      // Success case (including partial success with warnings)
+      setUploadProgress(prev => ({ 
+        ...prev, 
+        isAnalyzing: false, 
+        analysisReport 
+      }));
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred during file upload.';
-      console.error('Upload error:', errorMessage);
-      setUploadProgress({ isLoading: false, error: errorMessage, analysisId: null });
-      // if (options?.onUploadError) {
-      //   options.onUploadError(err as Error);
-      // }
-      return { success: false, analysisId: null, error: errorMessage };
+      const errorMessage = err instanceof Error ? err.message : 'Analysis failed';
+      console.error('Background analysis error:', errorMessage);
+      setUploadProgress(prev => ({ 
+        ...prev, 
+        isAnalyzing: false, 
+        error: `Analysis failed: ${errorMessage}` 
+      }));
     }
   };
 
-  const submitLeadData = async (analysisId: string | null, leadData: any): Promise<{ success: boolean; error: string | null }> => {
-    if (!analysisId) {
-      console.error('Cannot submit lead data without an analysisId.');
-      return { success: false, error: 'Missing analysisId.' };
-    }
-
+  const submitLeadData = async (leadData: any): Promise<{ success: boolean; error: string | null }> => {
     setLeadSubmissionProgress({ isLoading: true, error: null, isSuccess: false });
 
     try {
-      // Assuming a new Next.js API route like /api/submit-lead
+      // Use actual analysis ID if available, otherwise generate a temporary one
+      const analysisId = uploadProgress.analysisReport?.request_id || `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
       const response = await fetch('/api/submit-lead', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ analysisId, ...leadData }),
+        body: JSON.stringify({ 
+          analysisId, 
+          ...leadData 
+        }),
       });
 
       if (!response.ok) {
@@ -98,7 +247,7 @@ export function useFileUpload(options?: UseFileUploadOptions) {
         throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
       }
 
-      const result = await response.json(); // Expecting { success: true } or similar
+      const result = await response.json();
       setLeadSubmissionProgress({ isLoading: false, error: null, isSuccess: true });
       return { success: true, error: null };
     } catch (err) {
@@ -116,4 +265,7 @@ export function useFileUpload(options?: UseFileUploadOptions) {
     submitLeadData,
     leadSubmissionProgress,
   };
-} 
+}
+
+// Export the FinalAnalysisReport type for use in other components
+export type { FinalAnalysisReport }; 

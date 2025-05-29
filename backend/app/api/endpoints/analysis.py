@@ -27,23 +27,61 @@ class LeadData(BaseModel):
     store_name: str
     store_address: str
 
+class LeadSubmissionRequest(BaseModel):
+    analysis_id: str
+    manager_name: str
+    email: EmailStr
+    phone: Optional[str] = None
+    store_name: str
+    store_address: str
+
+@router.post("/submit-lead")
+async def submit_lead_data(lead_request: LeadSubmissionRequest):
+    """
+    Submit lead capture data to be stored in the database.
+    This endpoint receives lead information after file analysis is complete.
+    """
+    try:
+        # TODO: Here we would typically:
+        # 1. Validate the analysis_id exists
+        # 2. Store the lead data in Supabase
+        # 3. Link the lead to the analysis session
+        
+        # For now, we'll create a basic response structure
+        # The actual Supabase integration will be implemented in task 5.2.1
+        
+        lead_id = str(uuid.uuid4())
+        timestamp = datetime.utcnow()
+        
+        # Log the lead submission (for now just print, later will be Supabase)
+        print(f"Lead submitted at {timestamp}:")
+        print(f"  Analysis ID: {lead_request.analysis_id}")
+        print(f"  Manager: {lead_request.manager_name} ({lead_request.email})")
+        print(f"  Store: {lead_request.store_name}")
+        print(f"  Address: {lead_request.store_address}")
+        if lead_request.phone:
+            print(f"  Phone: {lead_request.phone}")
+        
+        # Return success response
+        return {
+            "success": True,
+            "message": "Lead data submitted successfully",
+            "lead_id": lead_id,
+            "analysis_id": lead_request.analysis_id,
+            "timestamp": timestamp.isoformat()
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to submit lead data: {str(e)}"
+        )
+
 @router.post("/analyze")
-async def analyze_timesheet(
-    lead_data_json: str = Form(..., alias="lead_data"),
-    file: UploadFile = File(...)
-):
+async def analyze_timesheet(file: UploadFile = File(...)):
     # Generate unique request ID
     request_id = str(uuid.uuid4())
     
-    try:
-        # Parse and validate lead data
-        lead_data_dict = json.loads(lead_data_json)
-        lead_data_model = LeadData(**lead_data_dict)
-    except json.JSONDecodeError:
-        raise HTTPException(status_code=400, detail="Invalid JSON format for lead_data.")
-    except ValidationError as e:
-        raise HTTPException(status_code=422, detail=f"Lead data validation error: {e.errors()}")
-
     # Get file information
     content_type = file.content_type
     filename = file.filename or "unknown_file"
@@ -84,23 +122,35 @@ async def analyze_timesheet(
                 debug_dir=debug_dir
             )
             
+            print(f"[DEBUG] LLM processing completed for {filename}")
+            print(f"[DEBUG] - Punch events count: {len(llm_output.punch_events) if llm_output.punch_events else 0}")
+            print(f"[DEBUG] - Parsing issues count: {len(llm_output.parsing_issues) if llm_output.parsing_issues else 0}")
+            if llm_output.parsing_issues:
+                print(f"[DEBUG] - Parsing issues: {llm_output.parsing_issues}")
+            
             if not llm_output.punch_events:
-                return FinalAnalysisReport(
+                print(f"[DEBUG] No punch events found, creating error report")
+                error_report = FinalAnalysisReport(
                     request_id=request_id,
                     original_filename=filename,
                     status="error_parsing_failed",
                     status_message="No punch events could be extracted from the file. Please verify the file contains timesheet data with employee names, dates, and clock in/out times.",
                     parsing_issues_summary=llm_output.parsing_issues or ["No punch events found in file"]
                 )
+                print(f"[DEBUG] Raising HTTPException with 422 status")
+                # Return 422 for validation errors (no data found)
+                raise HTTPException(status_code=422, detail=error_report.model_dump())
         
         except Exception as e:
-            return FinalAnalysisReport(
+            error_report = FinalAnalysisReport(
                 request_id=request_id,
                 original_filename=filename,
                 status="error_parsing_failed",
                 status_message=f"Failed to parse timesheet file: {str(e)}",
                 parsing_issues_summary=[f"LLM parsing error: {str(e)}"]
             )
+            # Return 422 for parsing/validation errors
+            raise HTTPException(status_code=422, detail=error_report.model_dump())
         
         # Step 2: Detect duplicate employees and get warnings
         duplicate_groups = detect_duplicate_employees(llm_output.punch_events)
@@ -157,20 +207,24 @@ async def analyze_timesheet(
                 overall_report_summary_text=overall_summary
             )
             
-            # TODO: Log lead data and analysis metadata to Supabase
-            # This will be implemented in task 5.2
+            # Note: Lead data will be submitted separately via /submit-lead endpoint
             
             return report
             
         except Exception as e:
-            return FinalAnalysisReport(
+            error_report = FinalAnalysisReport(
                 request_id=request_id,
                 original_filename=filename,
                 status="error_analysis_failed",
                 status_message=f"Failed to complete compliance analysis: {str(e)}",
                 parsing_issues_summary=llm_output.parsing_issues or []
             )
+            # Return 500 for internal analysis errors
+            raise HTTPException(status_code=500, detail=error_report.model_dump())
     
+    except HTTPException:
+        # Re-raise HTTPExceptions as-is (don't convert to 500 errors)
+        raise
     except Exception as e:
         # Catch-all for unexpected errors
         raise HTTPException(

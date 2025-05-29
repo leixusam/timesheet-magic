@@ -24,6 +24,7 @@
 - `frontend/.dockerignore` - Specifies files to ignore for the frontend Docker build.
 - `frontend/.env.local` - Local environment variables for the frontend (contains secrets, gitignored).
 - `frontend/src/app/api/analyze/route.ts` - Next.js API route for handling the timesheet analysis request.
+- `frontend/src/app/api/submit-lead/route.ts` - Next.js API route for handling lead data submission.
 - `backend/app/main.py` - FastAPI application entry point.
 - `backend/app/__init__.py` - Makes the `app` directory a Python package.
 - `backend/app/api/__init__.py` - Makes the `api` directory a Python package.
@@ -104,8 +105,12 @@
     - [x] 3.5.4 Function to generate employee-specific summary table data (hours breakdown, violations).
     - [x] 3.5.5 Function to provide generic actionable advice text for each violation type.
   - [x] 3.6 Integrate parsing, compliance checks, and report data generation in `analysis.py` endpoint.
-- [ ] 4.0 Implement Frontend: Report Generation and Display
-  - [ ] 4.1 Create `ReportDisplay.tsx` component to render the analysis results (FR-6).
+- [x] 4.0 Implement Frontend: Report Generation and Display
+  - [x] 4.1 Create `ReportDisplay.tsx` component to render the analysis results (FR-6).
+  - [x] 4.1.1 Create Next.js API route `/api/analyze` to proxy file uploads to FastAPI backend.
+  - [x] 4.1.2 Create Next.js API route `/api/submit-lead` to handle lead data submission.
+  - [x] 4.1.3 Update main page (`page.tsx`) to integrate UploadForm with ReportDisplay for complete upload → analysis → report flow.
+  - [x] 4.1.4 End-to-end testing with real timesheet files to validate complete pipeline.
   - [ ] 4.2 Display KPI tiles (Potential Costs, OT Costs, Total Labor Hours by type) (FR-6).
   - [ ] 4.3 Implement Staffing Density Heat-Map visualization (dynamic grid, color-coded hourly counts) (FR-5, FR-6).
   - [ ] 4.4 Display general Compliance Violations Summary (FR-6).
