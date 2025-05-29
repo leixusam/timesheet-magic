@@ -53,6 +53,8 @@
 - `backend/app/models/schemas.py` - Pydantic schemas for API request/response and LLM function calling.
 - `backend/app/db/supabase_client.py` - Module for interacting with Supabase (logging uploads and leads).
 - `backend/app/tests/db/test_supabase_client.py` - Unit tests for `supabase_client.py`.
+- `backend/app/tests/test_integration_analysis.py` - Comprehensive integration tests for the complete analysis pipeline with configurable options and reusable test framework.
+- `test_integration.py` - End-to-end integration test for the complete analysis pipeline (task 3.6).
 
 ### Notes
 
@@ -101,7 +103,7 @@
     - [x] 3.5.3 Function to compile list of general compliance violations.
     - [x] 3.5.4 Function to generate employee-specific summary table data (hours breakdown, violations).
     - [x] 3.5.5 Function to provide generic actionable advice text for each violation type.
-  - [ ] 3.6 Integrate parsing, compliance checks, and report data generation in `analysis.py` endpoint.
+  - [x] 3.6 Integrate parsing, compliance checks, and report data generation in `analysis.py` endpoint.
 - [ ] 4.0 Implement Frontend: Report Generation and Display
   - [ ] 4.1 Create `ReportDisplay.tsx` component to render the analysis results (FR-6).
   - [ ] 4.2 Display KPI tiles (Potential Costs, OT Costs, Total Labor Hours by type) (FR-6).

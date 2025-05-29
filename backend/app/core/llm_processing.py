@@ -1,4 +1,5 @@
 import os
+import sys
 from dotenv import load_dotenv
 # Pillow is not strictly needed here anymore if MIME type is passed in and validated upstream
 # import Image 
@@ -9,7 +10,14 @@ from typing import List, Optional, Dict, Any, Union # Added Dict, Any, Union
 
 import openpyxl # Added for Excel processing
 
-from backend.app.models.schemas import LLMProcessingOutput, LLMParsedPunchEvent
+# Add parent directories to path for imports
+current_dir = os.path.dirname(os.path.abspath(__file__))
+backend_dir = os.path.dirname(os.path.dirname(current_dir))
+parent_dir = os.path.dirname(backend_dir)
+if parent_dir not in sys.path:
+    sys.path.append(parent_dir)
+
+from app.models.schemas import LLMProcessingOutput, LLMParsedPunchEvent
 from llm_utils.google_utils import get_gemini_response_with_function_calling
 
 # Load environment variables
