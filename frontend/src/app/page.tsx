@@ -9,16 +9,19 @@ export default function Home() {
   const [currentView, setCurrentView] = useState<'upload' | 'report'>('upload');
   const [analysisReport, setAnalysisReport] = useState<FinalAnalysisReport | null>(null);
   const [leadData, setLeadData] = useState<LeadData | null>(null);
+  const [reportGeneratedAt, setReportGeneratedAt] = useState<string | null>(null);
 
   const handleAnalysisComplete = (report: FinalAnalysisReport, submittedLeadData: LeadData) => {
     setAnalysisReport(report);
     setLeadData(submittedLeadData);
+    setReportGeneratedAt(new Date().toISOString());
     setCurrentView('report');
   };
 
   const handleNewAnalysis = () => {
     setAnalysisReport(null);
     setLeadData(null);
+    setReportGeneratedAt(null);
     setCurrentView('upload');
   };
 
@@ -87,6 +90,8 @@ export default function Home() {
           <ReportDisplay 
             analysisReport={analysisReport}
             onNewAnalysis={handleNewAnalysis}
+            requestedBy={leadData?.managerName}
+            requestedAt={reportGeneratedAt || undefined}
           />
         </div>
       )}
