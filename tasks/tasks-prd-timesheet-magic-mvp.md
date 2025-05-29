@@ -88,7 +88,7 @@
     - [x] 3.3.2 Function to send text data (from files or OCR) to LLM for normalization using Pydantic schema via function calling. (Now handles direct file-to-schema parsing)
     - [x] 3.3.3 Handle LLM API errors and retries (up to 3 times) (FR-7, Technical Considerations).
   - [ ] 3.4 Develop `compliance_rules.py` module: (FR-4)
-    - [ ] 3.4.1 Implement logic to detect Meal Break Violations.
+    - [x] 3.4.1 Implement logic to detect Meal Break Violations.
     - [ ] 3.4.2 Implement logic to detect Rest Break Violations (with caveats for data availability).
     - [ ] 3.4.3 Implement logic for Daily Overtime.
     - [ ] 3.4.4 Implement logic for Weekly Overtime.
