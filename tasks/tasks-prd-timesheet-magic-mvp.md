@@ -68,25 +68,25 @@
   - [x] 1.4 Setup Supabase project and configure environment variables for backend access (DATABASE_URL, SUPABASE_SERVICE_KEY, OPENAI_API_KEY). User creates `backend/.env` and `frontend/.env.local` with actual secrets.
   - [x] 1.5 Install core frontend dependencies (e.g., `axios` or `fetch` wrapper, `react-dropzone`, Google Maps/Places API client if needed, Tailwind CSS, Supabase client if direct FE calls planned)
   - [x] 1.6 Install core backend dependencies (e.g., `fastapi`, `uvicorn`, `pydantic`, `openai` or `google-generativeai`, `psycopg2-binary` or `asyncpg`, `python-dotenv`)
-  - [ ] 1.7 Define initial Pydantic schemas for API requests/responses and LLM function calls (`backend/app/models/schemas.py`)
-  - [ ] 1.8 Basic Dockerfile setup for backend and potentially frontend for Fly.io deployment.
-- [ ] 2.0 Implement Frontend: File Upload and Lead Capture UI
-  - [ ] 2.1 Create file upload component (`UploadForm.tsx`) supporting drag-and-drop and file picker for specified formats (FR-1)
-  - [ ] 2.2 Implement client-side validation for file types and size (FR-1, FR-8)
-  - [ ] 2.3 Develop lead capture form within `UploadForm.tsx` for Manager Name, Email, Phone, Store Name, Store Physical Address (FR-2)
-  - [ ] 2.4 Integrate Google Maps/Places Autocomplete API for Store Name and Address fields in `useLeadCapture.ts` and `UploadForm.tsx` (FR-2)
-  - [ ] 2.5 Implement form validation for mandatory lead capture fields (FR-2)
-  - [ ] 2.6 Develop logic in `useFileUpload.ts` to initiate file upload to backend API (`/api/analyze`) immediately upon file selection/drop (FR-2)
-  - [ ] 2.7 Ensure lead capture form is displayed and interactive while file processing occurs in backend (FR-2)
-  - [ ] 2.8 Handle submission of lead capture data (potentially as part of the analysis request or a separate call if analysis is already in progress).
-  - [ ] 2.9 Basic UI styling for upload and lead capture form using Tailwind CSS (Design Considerations).
-- [ ] 3.0 Implement Backend: Timesheet Processing and Analysis Logic
-  - [ ] 3.1 Create FastAPI endpoint `/api/endpoints/analysis.py` to receive uploaded file and lead data (FR-1, FR-2)
-  - [ ] 3.2 Implement file handling logic in `analysis.py` to manage various input types (CSV, XLSX, PDF, images, text) (FR-1)
-  - [ ] 3.3 Develop LLM interaction module (`llm_processing.py`): (FR-3)
-    - [ ] 3.3.1 Function to send image data to multi-modal LLM for OCR/text extraction.
-    - [ ] 3.3.2 Function to send text data (from files or OCR) to LLM for normalization using Pydantic schema via function calling.
-    - [ ] 3.3.3 Handle LLM API errors and retries (up to 3 times) (FR-7, Technical Considerations).
+  - [x] 1.7 Define initial Pydantic schemas for API requests/responses and LLM function calls (`backend/app/models/schemas.py`)
+  - [x] 1.8 Basic Dockerfile setup for backend and potentially frontend for Fly.io deployment.
+- [x] 2.0 Implement Frontend: File Upload and Lead Capture UI
+  - [x] 2.1 Create file upload component (`UploadForm.tsx`) supporting drag-and-drop and file picker for specified formats (FR-1)
+  - [x] 2.2 Implement client-side validation for file types and size (FR-1, FR-8)
+  - [x] 2.3 Develop lead capture form within `UploadForm.tsx` for Manager Name, Email, Phone, Store Name, Store Physical Address (FR-2)
+  - [x] 2.4 Integrate Google Maps/Places Autocomplete API for Store Name and Address fields in `useLeadCapture.ts` and `UploadForm.tsx` (FR-2)
+  - [x] 2.5 Implement form validation for mandatory lead capture fields (FR-2)
+  - [x] 2.6 Develop logic in `useFileUpload.ts` to initiate file upload to backend API (`/api/analyze`) immediately upon file selection/drop (FR-2)
+  - [x] 2.7 Ensure lead capture form is displayed and interactive while file processing occurs in backend (FR-2)
+  - [x] 2.8 Handle submission of lead capture data (potentially as part of the analysis request or a separate call if analysis is already in progress).
+  - [x] 2.9 Basic UI styling for upload and lead capture form using Tailwind CSS (Design Considerations).
+- [x] 3.0 Implement Backend: Timesheet Processing and Analysis Logic
+  - [x] 3.1 Create FastAPI endpoint `/api/endpoints/analysis.py` to receive uploaded file and lead data (FR-1, FR-2)
+  - [x] 3.2 Implement file handling logic in `analysis.py` to manage various input types (CSV, XLSX, PDF, images, text) (FR-1)
+  - [x] 3.3 Develop LLM interaction module (`llm_processing.py`): (FR-3)
+    - [x] 3.3.1 Function to send image data to multi-modal LLM for OCR/text extraction. (Consolidated into 3.3.2)
+    - [x] 3.3.2 Function to send text data (from files or OCR) to LLM for normalization using Pydantic schema via function calling. (Now handles direct file-to-schema parsing)
+    - [x] 3.3.3 Handle LLM API errors and retries (up to 3 times) (FR-7, Technical Considerations).
   - [ ] 3.4 Develop `compliance_rules.py` module: (FR-4)
     - [ ] 3.4.1 Implement logic to detect Meal Break Violations.
     - [ ] 3.4.2 Implement logic to detect Rest Break Violations (with caveats for data availability).
@@ -123,13 +123,4 @@
   - [ ] 5.3 Implement robust error handling in FastAPI endpoint and core modules, returning appropriate HTTP status codes and error messages to frontend.
 - [ ] 6.0 End-to-End Integration, Testing, and Refinement
   - [ ] 6.1 Write unit tests for key frontend components and hooks (e.g., `UploadForm.test.tsx`, `ReportDisplay.test.tsx`, `useFileUpload.test.ts`, `useLeadCapture.test.ts`).
-  - [ ] 6.2 Write unit tests for backend core logic (`test_llm_processing.py`, `test_compliance_rules.py`, `test_reporting.py`).
-  - [ ] 6.3 Write integration tests for backend API endpoint (`test_analysis.py`).
-  - [ ] 6.4 Perform end-to-end manual testing with diverse set of sample files (CSV, XLSX, PDF, images, text) to meet FR-8 SLA and G2 parsing goal.
-  - [ ] 6.5 Test lead capture flow, including Maps API integration and mandatory field validation.
-  - [ ] 6.6 Test error handling for parsing failures and re-upload options.
-  - [ ] 6.7 Test report accuracy and clarity against PRD requirements (G5, SM-4).
-  - [ ] 6.8 Refine UI/UX based on testing and feedback (Design Considerations).
-  - [ ] 6.9 Verify logging in Supabase.
-  - [ ] 6.10 Add privacy placeholder text to UI (Technical Considerations).
-  - [ ] 6.11 Prepare for deployment (e.g., finalize Dockerfiles, Fly.io configurations). 
+  - [ ] 6.2 Write unit tests for backend core logic (`test_llm_processing.py`, `test_compliance_rules.py`, `test_reporting.py`

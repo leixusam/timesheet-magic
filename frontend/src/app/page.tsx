@@ -1,6 +1,15 @@
+'use client';
+
 import Image from "next/image";
+import UploadForm, { LeadData } from '@/components/UploadForm';
 
 export default function Home() {
+  const handleFileUpload = (file: File, leadData: LeadData) => {
+    console.log('File to upload:', file.name);
+    console.log('Lead data:', leadData);
+    // Later, this will trigger the actual upload to the backend
+  };
+
   return (
     <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
       <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
@@ -49,6 +58,15 @@ export default function Home() {
           >
             Read our docs
           </a>
+        </div>
+
+        <div className="mb-32 mt-12 grid text-center lg:mb-0 lg:w-full lg:max-w-5xl lg:grid-cols-1 lg:text-left">
+          <h1 className="text-2xl font-semibold mb-6">Timesheet Magic MVP</h1>
+          
+          <div className="bg-white p-8 rounded-lg shadow-md w-full max-w-xl mx-auto">
+            <h2 className="text-xl font-semibold mb-4 text-gray-700">Upload Your Timesheet</h2>
+            <UploadForm onFileUpload={handleFileUpload} />
+          </div>
         </div>
       </main>
       <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
