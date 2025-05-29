@@ -27,6 +27,7 @@ class LLMParsedPunchEvent(BaseModel):
     department_as_parsed: Optional[str] = Field(None, description="Department or work area for this shift/punch, if parseable (e.g., 'Kitchen', 'Front of House').")
     location_note_as_parsed: Optional[str] = Field(None, description="Any specific location notes associated with this punch if present (e.g., 'Station 3', 'Patio').")
     notes_as_parsed: Optional[str] = Field(None, description="Any free-text notes associated with this specific punch or shift segment in the original timesheet.")
+    hourly_wage_as_parsed: Optional[float] = Field(None, description="Employee's hourly wage rate if present in the timesheet (e.g., 15.50, 18.00). Used for cost calculations.")
     # raw_text_segment: Optional[str] = Field(None, description="Optional: the raw text chunk this punch was parsed from for developer audit/debugging.") # Consider if needed for V1 payload size
 
 class LLMProcessingOutput(BaseModel):

@@ -90,11 +90,11 @@
   - [ ] 3.4 Develop `compliance_rules.py` module: (FR-4)
     - [x] 3.4.1 Implement logic to detect Meal Break Violations.
     - [x] 3.4.2 Implement logic to detect Rest Break Violations (with caveats for data availability).
-    - [ ] 3.4.3 Implement logic for Daily Overtime.
-    - [ ] 3.4.4 Implement logic for Weekly Overtime.
-    - [ ] 3.4.5 Implement logic for Daily Double Overtime.
-    - [ ] 3.4.6 Implement logic to flag potential duplicate employee names from normalized data (FR-3).
-    - [ ] 3.4.7 Implement logic for hourly wage determination (parse from data or use default) (FR-10).
+    - [x] 3.4.3 Implement logic for Daily Overtime.
+    - [x] 3.4.4 Implement logic for Weekly Overtime.
+    - [x] 3.4.5 Implement logic for Daily Double Overtime.
+    - [x] 3.4.6 Implement logic to flag potential duplicate employee names from normalized data (FR-3). **Enhanced with consolidated break detection across multiple roles**.
+    - [x] 3.4.7 Implement logic for hourly wage determination (parse from data or use default) (FR-10).
   - [ ] 3.5 Develop `reporting.py` module: (FR-5, FR-6)
     - [ ] 3.5.1 Function to calculate KPI tiles data (cost of violations, OT costs, total hours by type).
     - [ ] 3.5.2 Function to generate data for Staffing Density Heat-Map (dynamic period, hourly counts).

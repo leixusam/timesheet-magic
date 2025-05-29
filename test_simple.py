@@ -1,179 +1,148 @@
 #!/usr/bin/env python3
+"""
+Simple LLM Test Script
+Tests different Google models to find the most reliable one for our use case.
+"""
 
-import sys
-import os
 import asyncio
+import os
+import sys
+from pathlib import Path
 import json
 from datetime import datetime
 
-# Add project root to Python path
-sys.path.insert(0, os.path.abspath('.'))
+# Add the backend app to Python path
+current_dir = Path(__file__).parent
+backend_dir = current_dir / "backend" / "app"
+sys.path.insert(0, str(backend_dir))
 
-from backend.app.core.llm_processing import parse_file_to_structured_data
+from core.llm_processing import parse_file_to_structured_data
 
-async def test_simple_csv_processing():
-    print("Simple CSV Processing Test")
-    print("=" * 40)
+# Test different models
+MODELS_TO_TEST = [
+    "gemini-1.5-flash",
+    "gemini-1.5-flash-latest", 
+    "gemini-1.5-pro",
+    "gemini-2.5-flash-preview-05-20",  # Current problematic model
+]
+
+async def test_model(model_name, file_bytes, mime_type, filename):
+    """Test a specific model"""
+    print(f"\n🧪 Testing model: {model_name}")
+    print("-" * 30)
     
-    # Create debug folder with timestamp
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    debug_dir = f"debug_runs/simple_{timestamp}"
-    os.makedirs(debug_dir, exist_ok=True)
-    print(f"📁 Debug folder created: {debug_dir}")
-    
-    # Create simple CSV test data
-    csv_content = """Employee Name,Date,Time,Action,Role
-BB - xxxxxxxxx,03/16/2025,11:13 AM,Clock In,Cashier
-BB - xxxxxxxxx,03/16/2025,04:14 PM,Clock Out,Cashier
-BC - xxxxxxxxx,03/17/2025,10:01 AM,Clock In,Cook
-BC - xxxxxxxxx,03/17/2025,02:30 PM,Clock Out,Cook"""
-    
-    csv_bytes = csv_content.encode('utf-8')
-    
-    print(f"📊 Test CSV size: {len(csv_bytes)} bytes")
-    
-    # Save test CSV
-    csv_path = os.path.join(debug_dir, "test_data.csv")
-    with open(csv_path, 'w') as f:
-        f.write(csv_content)
-    print(f"💾 Test CSV saved: {csv_path}")
+    debug_dir = current_dir / "debug_runs" / f"simple_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    debug_dir.mkdir(parents=True, exist_ok=True)
     
     try:
-        print(f"\n🚀 Starting LLM processing...")
-        start_time = datetime.now()
+        # Temporarily override the model configuration
+        config_path = current_dir / "config.json"
+        with open(config_path, 'r') as f:
+            original_config = json.load(f)
         
+        # Create test config with our model
+        test_config = original_config.copy()
+        test_config["google"]["default_model"] = model_name
+        
+        with open(config_path, 'w') as f:
+            json.dump(test_config, f, indent=2)
+        
+        print(f"⚙️ Temporarily set default model to: {model_name}")
+        
+        # Test LLM processing
         result = await parse_file_to_structured_data(
-            file_bytes=csv_bytes,
-            mime_type="text/csv",
-            original_filename="test_data.csv",
-            debug_dir=debug_dir
+            file_bytes=file_bytes,
+            mime_type=mime_type,
+            original_filename=filename,
+            debug_dir=str(debug_dir)
         )
         
-        end_time = datetime.now()
-        processing_time = (end_time - start_time).total_seconds()
+        print(f"✅ SUCCESS with {model_name}!")
+        print(f"   - Extracted {len(result.punch_events)} punch events")
+        print(f"   - Parsing issues: {len(result.parsing_issues)}")
         
-        print(f"\n✅ Success! Processing completed in {processing_time:.2f} seconds")
-        print(f"📝 Extracted {len(result.punch_events)} punch events")
-        print(f"⚠️  Parsing issues: {len(result.parsing_issues)}")
+        if result.parsing_issues:
+            print(f"   - Issues: {result.parsing_issues[:2]}")  # Show first 2 issues
         
-        # Show details
-        for i, event in enumerate(result.punch_events, 1):
-            print(f"{i}. {event.employee_identifier_in_file} - {event.punch_type_as_parsed} at {event.timestamp}")
+        # Restore original config
+        with open(config_path, 'w') as f:
+            json.dump(original_config, f, indent=2)
         
-        # Save output
-        output_data = {
-            "test_type": "simple_csv",
-            "processing_time_seconds": processing_time,
-            "result": result.model_dump()  # This contains datetime objects
-        }
-        
-        output_path = os.path.join(debug_dir, "output.json")
-        with open(output_path, 'w') as f:
-            # Use model_dump_json which handles datetime serialization
-            result_json = json.loads(result.model_dump_json())
-            output_data["result"] = result_json
-            json.dump(output_data, f, indent=2)
-        print(f"💾 Output saved: {output_path}")
-        
-        print(f"\n🎉 Simple test - COMPLETE!")
-        
-        return len(result.punch_events) > 0  # Return success indicator
+        return True, len(result.punch_events), result.parsing_issues
         
     except Exception as e:
-        print(f"❌ Error: {e}")
-        import traceback
-        traceback.print_exc()
-        return False
+        print(f"❌ FAILED with {model_name}: {e}")
+        
+        # Restore original config
+        with open(config_path, 'w') as f:
+            json.dump(original_config, f, indent=2)
+        
+        return False, 0, [str(e)]
 
-async def test_minimal_excel():
-    print("\nMinimal Excel Test")
-    print("=" * 30)
+async def main():
+    """Test multiple models"""
+    print("🚀 Testing Multiple Google Models")
+    print("=" * 50)
     
-    # Create debug folder with timestamp
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    debug_dir = f"debug_runs/minimal_excel_{timestamp}"
-    os.makedirs(debug_dir, exist_ok=True)
-    print(f"📁 Debug folder created: {debug_dir}")
+    # Load test file
+    csv_file_path = backend_dir / "tests" / "core" / "8.05-short.csv"
     
-    # Read just the first few lines of the Excel file
-    excel_path = "backend/app/tests/core/8.05-short.xlsx"
-    with open(excel_path, "rb") as f:
+    if not csv_file_path.exists():
+        print(f"❌ Test file not found: {csv_file_path}")
+        return
+    
+    with open(csv_file_path, 'rb') as f:
         file_bytes = f.read()
     
-    print(f"📊 Excel file size: {len(file_bytes):,} bytes")
+    print(f"📄 Testing with: {csv_file_path.name} ({len(file_bytes)} bytes)")
     
-    # First, let's see what the Excel content looks like when parsed
-    import openpyxl
-    import io
+    results = {}
     
-    try:
-        workbook = openpyxl.load_workbook(io.BytesIO(file_bytes), data_only=True)
-        sheet = workbook.active
+    for model in MODELS_TO_TEST:
+        try:
+            success, events, issues = await test_model(
+                model, file_bytes, "text/csv", csv_file_path.name
+            )
+            results[model] = {
+                "success": success,
+                "events": events,
+                "issues": len(issues)
+            }
+        except Exception as e:
+            print(f"💥 Critical error testing {model}: {e}")
+            results[model] = {
+                "success": False,
+                "events": 0,
+                "issues": 1,
+                "error": str(e)
+            }
+    
+    # Summary
+    print("\n📊 MODEL TEST RESULTS")
+    print("=" * 50)
+    
+    working_models = []
+    for model, result in results.items():
+        status = "✅ PASS" if result["success"] else "❌ FAIL"
+        events = result["events"]
+        issues = result["issues"]
         
-        print("\nFirst 10 rows of Excel content:")
-        sample_lines = []
-        for row_idx, row in enumerate(sheet.iter_rows()):
-            if row_idx >= 10:  # Only first 10 rows
-                break
-            row_values = []
-            for cell in row:
-                cell_value = cell.value
-                if cell_value is None:
-                    row_values.append("")
-                else:
-                    row_values.append(str(cell_value).strip())
-            row_text = ",".join(row_values)
-            print(f"Row {row_idx + 1}: {row_text}")
-            sample_lines.append(row_text)
+        print(f"{status} {model:30} | Events: {events:2d} | Issues: {issues}")
         
-        # Create minimal sample with just first few data rows
-        minimal_content = "\n".join(sample_lines[:8])  # Just first 8 rows
-        minimal_bytes = minimal_content.encode('utf-8')
+        if result["success"] and events > 0:
+            working_models.append((model, events))
+    
+    if working_models:
+        print(f"\n🎉 WORKING MODELS FOUND: {len(working_models)}")
+        best_model = max(working_models, key=lambda x: x[1])  # Model with most events
+        print(f"🏆 BEST MODEL: {best_model[0]} (extracted {best_model[1]} events)")
         
-        print(f"\nTesting with minimal content ({len(minimal_bytes)} bytes):")
-        print(minimal_content[:500] + ("..." if len(minimal_content) > 500 else ""))
-        
-        # Save minimal sample
-        sample_path = os.path.join(debug_dir, "minimal_sample.txt")
-        with open(sample_path, 'w') as f:
-            f.write(minimal_content)
-        
-        # Test with text/csv MIME type first
-        print(f"\n🚀 Testing minimal content as CSV...")
-        start_time = datetime.now()
-        
-        result = await parse_file_to_structured_data(
-            file_bytes=minimal_bytes,
-            mime_type="text/csv",  # Use CSV type to avoid Excel processing complexity
-            original_filename="minimal_sample.csv",
-            debug_dir=debug_dir
-        )
-        
-        end_time = datetime.now()
-        processing_time = (end_time - start_time).total_seconds()
-        
-        print(f"\n✅ Minimal Excel test completed in {processing_time:.2f} seconds")
-        print(f"📝 Extracted {len(result.punch_events)} punch events")
-        
-        for i, event in enumerate(result.punch_events, 1):
-            print(f"{i}. {event.employee_identifier_in_file} - {event.punch_type_as_parsed} at {event.timestamp}")
-        
-        return len(result.punch_events) > 0
-        
-    except Exception as e:
-        print(f"❌ Minimal Excel test failed: {e}")
-        import traceback
-        traceback.print_exc()
-        return False
+        print(f"\n💡 RECOMMENDATION:")
+        print(f"   Update config.json to use: {best_model[0]}")
+        print(f"   This model successfully extracted the most punch events.")
+    else:
+        print(f"\n⚠️ NO WORKING MODELS FOUND")
+        print(f"   This might indicate an API key issue or temporary service problems.")
 
 if __name__ == "__main__":
-    success = asyncio.run(test_simple_csv_processing())
-    if success:
-        print("\n✅ Simple test passed")
-        excel_success = asyncio.run(test_minimal_excel())
-        if excel_success:
-            print("\n✅ Minimal Excel test passed - Excel processing works!")
-        else:
-            print("\n❌ Minimal Excel test failed - issue with Excel content format")
-    else:
-        print("\n❌ Simple test failed - need to fix basic functionality first") 
+    asyncio.run(main()) 

@@ -122,6 +122,9 @@ async def parse_file_to_structured_data(file_bytes: bytes, mime_type: str, origi
         RuntimeError: If LLM interaction fails or data cannot be normalized.
     """
     
+    # Initialize model override (can be updated for specific file types)
+    model_override = None
+    
     tool_name = "timesheet_data_extractor"
     tool_description = f"Extracts structured timesheet data (employee punch events and parsing issues) directly from the content of the provided file named '{original_filename}' (MIME type: {mime_type})."
     
@@ -224,14 +227,28 @@ Use the '{tool_name}' function with your extracted data now:"""
                 print(f"Warning: Excel file '{original_filename}' ({mime_type}) was parsed but yielded no text content.")
                 return LLMProcessingOutput(punch_events=[], parsing_issues=[f"Excel file '{original_filename}' parsed to empty text content."])
 
+            # Determine model override for large content before processing
+            if len(excel_text_content) > 10000:  # Use Pro model for larger content
+                try:
+                    import json
+                    config_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'config.json')
+                    with open(config_path, 'r') as f:
+                        config = json.load(f)
+                        model_override = config.get("google", {}).get("high_model")
+                        print(f"[DEBUG] Using high-power model for large content: {model_override}")
+                except Exception:
+                    pass  # Fall back to default model if config loading fails
+
             # Check if content is too large for single processing
-            MAX_CHARS = 50000  # Increased limit for complete processing
-            if len(excel_text_content) > MAX_CHARS:
-                print(f"Warning: Excel content is large ({len(excel_text_content)} chars), will process in chunks")
+            MAX_CHARS = 15000  # Reduced limit for function calling reliability
+            FORCE_CHUNK_ROWS = 100  # Always chunk if more than 100 data rows
+            
+            if len(excel_text_content) > MAX_CHARS or data_row_count > FORCE_CHUNK_ROWS:
+                print(f"Excel content requires chunking: {len(excel_text_content)} chars, {data_row_count} data rows")
                 
                 # Split into chunks by lines to maintain data integrity
                 lines = extracted_text_lines
-                chunk_size = min(100, len(lines) // 3)  # Process in chunks of ~100 lines or 1/3 of total
+                chunk_size = max(20, min(50, len(lines) // 5))  # Smaller chunks: 20-50 lines per chunk
                 chunks = [lines[i:i + chunk_size] for i in range(0, len(lines), chunk_size)]
                 
                 print(f"Processing {len(chunks)} chunks of approximately {chunk_size} lines each")
@@ -241,9 +258,21 @@ Use the '{tool_name}' function with your extracted data now:"""
                 
                 for chunk_idx, chunk_lines in enumerate(chunks):
                     chunk_content = "\n".join(chunk_lines)
+                    
+                    # Skip chunks that are too small or don't contain useful data
+                    if len(chunk_content.strip()) < 50 or not any(
+                        keyword in chunk_content.lower() 
+                        for keyword in ["am", "pm", ":", "clock", "punch", "in", "out"]
+                    ):
+                        print(f"Skipping chunk {chunk_idx + 1} - insufficient data")
+                        continue
+                    
                     chunk_prompt = prompt_intro.replace(
                         "extract ALL individual employee punch events",
                         f"extract all punch events from this chunk ({chunk_idx + 1}/{len(chunks)})"
+                    ).replace(
+                        "Return ALL punch events in the punch_events array. Do not stop at the first few - process the entire timesheet data.",
+                        f"Return all punch events found in this specific chunk. Focus on quality over quantity for this chunk."
                     )
                     
                     print(f"Processing chunk {chunk_idx + 1}/{len(chunks)} ({len(chunk_content)} chars)")
@@ -264,22 +293,45 @@ Use the '{tool_name}' function with your extracted data now:"""
                         if isinstance(chunk_response, dict):
                             # Process chunk response same as main response
                             if "punch_events" in chunk_response:
-                                all_punch_events.extend(chunk_response.get("punch_events", []))
-                                all_parsing_issues.extend(chunk_response.get("parsing_issues", []))
+                                chunk_events = chunk_response.get("punch_events", [])
+                                chunk_issues = chunk_response.get("parsing_issues", [])
+                                all_punch_events.extend(chunk_events)
+                                all_parsing_issues.extend(chunk_issues)
+                                print(f"  Chunk {chunk_idx + 1}: Found {len(chunk_events)} events")
                             elif "employee_identifier_in_file" in chunk_response:
                                 all_punch_events.append(chunk_response)
+                                print(f"  Chunk {chunk_idx + 1}: Found 1 event")
+                        elif isinstance(chunk_response, str) and not chunk_response.startswith("Error:"):
+                            # LLM returned text instead of function call - this is OK for chunks
+                            print(f"  Chunk {chunk_idx + 1}: LLM returned text response, no events extracted")
+                            all_parsing_issues.append(f"Chunk {chunk_idx + 1}: LLM returned text instead of function call")
                     
                     except Exception as chunk_error:
                         print(f"Error processing chunk {chunk_idx + 1}: {chunk_error}")
                         all_parsing_issues.append(f"Error processing chunk {chunk_idx + 1}: {str(chunk_error)}")
                 
                 print(f"Chunk processing complete. Total events: {len(all_punch_events)}")
+                
+                # Save chunk processing debug info
+                if debug_dir:
+                    chunk_debug = {
+                        "total_chunks": len(chunks),
+                        "total_events": len(all_punch_events),
+                        "total_issues": len(all_parsing_issues),
+                        "chunk_size": chunk_size,
+                        "original_data_rows": data_row_count,
+                        "original_content_length": len(excel_text_content)
+                    }
+                    with open(os.path.join(debug_dir, "chunk_processing.json"), 'w') as f:
+                        json.dump(chunk_debug, f, indent=2)
+                
                 return LLMProcessingOutput(
                     punch_events=all_punch_events,
                     parsing_issues=all_parsing_issues
                 )
             else:
                 # Process normally if content is small enough
+                print(f"Processing single request: {len(excel_text_content)} chars, {data_row_count} data rows")
                 excel_text_content = excel_text_content[:MAX_CHARS] + ("\n... [TRUNCATED]" if len(excel_text_content) > MAX_CHARS else "")
 
             prepared_prompt_parts.append("\n\n--- Extracted Excel Content (CSV-like format) ---\n" + excel_text_content + "\n--- End of Excel Content ---")
@@ -299,19 +351,7 @@ Use the '{tool_name}' function with your extracted data now:"""
             else:
                 print(f"[DEBUG] Part {i + 1}: Dict with keys: {list(part.keys())}")
         
-        # Use the default model from config for most files, can be overridden if needed
-        model_override = None
-        # For larger files or when the default model fails, try the high-power model
-        if len(str(prepared_prompt_parts)) > 10000:  # Use Pro model for larger content
-            try:
-                import json
-                config_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'config.json')
-                with open(config_path, 'r') as f:
-                    config = json.load(f)
-                    model_override = config.get("google", {}).get("high_model")
-                    print(f"[DEBUG] Using high-power model for large content: {model_override}")
-            except Exception:
-                pass  # Fall back to default model if config loading fails
+        # model_override was already determined earlier for Excel files
         
         print(f"[DEBUG] Creating tool dictionary...")
         print(f"[DEBUG] Tool name: {timesheet_tool_dict.get('name')}")

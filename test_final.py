@@ -1,173 +1,187 @@
 #!/usr/bin/env python3
+"""
+Final LLM Test with Timeout Protection
+Tests the LLM with timeout to prevent hanging.
+"""
 
-import sys
-import os
 import asyncio
+import os
+import sys
+from pathlib import Path
 import json
-import shutil
 from datetime import datetime
 
-# Add project root to Python path
-sys.path.insert(0, os.path.abspath('.'))
+# Add the backend app to Python path
+current_dir = Path(__file__).parent
+backend_dir = current_dir / "backend" / "app"
+sys.path.insert(0, str(backend_dir))
 
-from backend.app.core.llm_processing import parse_file_to_structured_data
+from core.llm_processing import parse_file_to_structured_data
 
-async def test_final_excel_processing():
-    print("Final CSV Processing Test with Debug Output")
+async def test_with_timeout():
+    """Test LLM processing with timeout protection"""
+    print("🚀 Testing LLM Processing with Timeout Protection")
     print("=" * 60)
     
-    # Create debug folder with timestamp
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    debug_dir = f"debug_runs/run_{timestamp}"
-    os.makedirs(debug_dir, exist_ok=True)
-    print(f"📁 Debug folder created: {debug_dir}")
+    # Load test file
+    csv_file_path = backend_dir / "tests" / "core" / "8.05-short.csv"
     
-    # Read the Excel file
-    excel_path = "backend/app/tests/core/8.05-short.csv"
-    with open(excel_path, "rb") as f:
+    if not csv_file_path.exists():
+        print(f"❌ Test file not found: {csv_file_path}")
+        return False
+    
+    with open(csv_file_path, 'rb') as f:
         file_bytes = f.read()
     
-    print(f"📊 File size: {len(file_bytes):,} bytes")
+    print(f"📄 Testing with: {csv_file_path.name} ({len(file_bytes)} bytes)")
     
-    # Save a copy of the input file
-    input_filename = f"input_{timestamp}.csv"
-    input_save_path = os.path.join(debug_dir, input_filename)
-    shutil.copy2(excel_path, input_save_path)
-    print(f"💾 Input file saved: {input_save_path}")
+    debug_dir = current_dir / "debug_runs" / f"final_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    debug_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Test with 60-second timeout
+    timeout_seconds = 60
+    print(f"⏱️ Setting timeout: {timeout_seconds} seconds")
     
     try:
-        print(f"\n🚀 Starting LLM processing...")
+        print(f"\n🤖 Starting LLM processing with timeout protection...")
         start_time = datetime.now()
         
-        result = await parse_file_to_structured_data(
-            file_bytes=file_bytes,
-            mime_type="text/csv",
-            original_filename=os.path.basename(excel_path),
-            debug_dir=debug_dir
+        # Wrap the LLM call with asyncio timeout
+        result = await asyncio.wait_for(
+            parse_file_to_structured_data(
+                file_bytes=file_bytes,
+                mime_type="text/csv",
+                original_filename=csv_file_path.name,
+                debug_dir=str(debug_dir)
+            ),
+            timeout=timeout_seconds
         )
         
         end_time = datetime.now()
         processing_time = (end_time - start_time).total_seconds()
         
-        print(f"\n✅ Success! Processing completed in {processing_time:.2f} seconds")
-        print(f"📝 Extracted {len(result.punch_events)} punch events")
-        print(f"⚠️  Parsing issues: {len(result.parsing_issues)}")
+        print(f"✅ SUCCESS! Processing completed in {processing_time:.2f} seconds")
+        print(f"📊 Results:")
+        print(f"   - Extracted {len(result.punch_events)} punch events")
+        print(f"   - Parsing issues: {len(result.parsing_issues)}")
         
-        # Show summary of employees and their punch counts
-        employee_counts = {}
-        role_counts = {}
-        for event in result.punch_events:
-            emp_id = event.employee_identifier_in_file
-            role = event.role_as_parsed or "Unknown"
-            
-            if emp_id not in employee_counts:
-                employee_counts[emp_id] = 0
-            employee_counts[emp_id] += 1
-            
-            if role not in role_counts:
-                role_counts[role] = 0
-            role_counts[role] += 1
+        if result.punch_events:
+            print(f"\n📋 Sample punch events:")
+            for i, event in enumerate(result.punch_events[:3], 1):
+                print(f"   {i}. {event.employee_identifier_in_file} - {event.punch_type_as_parsed}")
         
-        print(f"\n👥 Employee Summary:")
-        for emp_id, count in employee_counts.items():
-            print(f"  {emp_id}: {count} punch events")
+        if result.parsing_issues:
+            print(f"\n⚠️ Parsing issues:")
+            for issue in result.parsing_issues[:2]:
+                print(f"   - {issue}")
         
-        print(f"\n🎭 Role Summary:")
-        for role, count in role_counts.items():
-            print(f"  {role}: {count} punch events")
-        
-        # Show date range
-        timestamps = [event.timestamp for event in result.punch_events]
-        if timestamps:
-            # Convert datetime objects to strings if needed
-            if hasattr(timestamps[0], 'isoformat'):
-                dates = [ts.isoformat().split('T')[0] for ts in timestamps]  
-            else:
-                dates = [str(ts).split('T')[0] for ts in timestamps]
-            min_date = min(dates)
-            max_date = max(dates)
-            print(f"\n📅 Date Range: {min_date} to {max_date}")
-        else:
-            min_date = max_date = None
-        
-        # Save output as JSON
+        # Save results
         output_data = {
-            "metadata": {
-                "input_file": os.path.basename(excel_path),
-                "processing_timestamp": timestamp,
-                "processing_time_seconds": processing_time,
-                "total_punch_events": len(result.punch_events),
-                "total_parsing_issues": len(result.parsing_issues),
-                "employee_counts": employee_counts,
-                "role_counts": role_counts,
-                "date_range": {
-                    "min_date": min_date if timestamps else None,
-                    "max_date": max_date if timestamps else None
-                }
-            },
-            "parsed_data": json.loads(result.model_dump_json())  # Handle datetime serialization
+            "success": True,
+            "processing_time_seconds": processing_time,
+            "events_count": len(result.punch_events),
+            "issues_count": len(result.parsing_issues),
+            "timestamp": datetime.now().isoformat()
         }
         
-        output_filename = f"output_{timestamp}.json"
-        output_save_path = os.path.join(debug_dir, output_filename)
-        with open(output_save_path, 'w', encoding='utf-8') as f:
-            json.dump(output_data, f, indent=2, ensure_ascii=False)
-        print(f"💾 Output file saved: {output_save_path}")
+        with open(debug_dir / "test_results.json", 'w') as f:
+            json.dump(output_data, f, indent=2)
         
-        # Save a readable summary
-        summary_filename = f"summary_{timestamp}.txt"
-        summary_save_path = os.path.join(debug_dir, summary_filename)
-        with open(summary_save_path, 'w', encoding='utf-8') as f:
-            f.write(f"Excel Timesheet Processing Summary\n")
-            f.write(f"{'=' * 40}\n\n")
-            f.write(f"Input File: {os.path.basename(excel_path)}\n")
-            f.write(f"Processing Time: {processing_time:.2f} seconds\n")
-            f.write(f"Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
-            
-            f.write(f"Results:\n")
-            f.write(f"- Total Punch Events: {len(result.punch_events)}\n")
-            f.write(f"- Parsing Issues: {len(result.parsing_issues)}\n")
-            f.write(f"- Date Range: {min_date if timestamps else 'N/A'} to {max_date if timestamps else 'N/A'}\n\n")
-            
-            f.write(f"Employee Summary:\n")
-            for emp_id, count in employee_counts.items():
-                f.write(f"- {emp_id}: {count} punch events\n")
-            
-            f.write(f"\nRole Summary:\n")
-            for role, count in role_counts.items():
-                f.write(f"- {role}: {count} punch events\n")
-                
-            if result.parsing_issues:
-                f.write(f"\nParsing Issues:\n")
-                for i, issue in enumerate(result.parsing_issues, 1):
-                    f.write(f"{i}. {issue}\n")
-            
-            f.write(f"\nFirst 5 Punch Events (for verification):\n")
-            for i, event in enumerate(result.punch_events[:5], 1):
-                f.write(f"{i}. {event.employee_identifier_in_file} - {event.punch_type_as_parsed} at {event.timestamp}\n")
-                if event.role_as_parsed:
-                    f.write(f"   Role: {event.role_as_parsed}\n")
+        print(f"💾 Results saved to: {debug_dir}")
+        return True
         
-        print(f"📄 Summary file saved: {summary_save_path}")
+    except asyncio.TimeoutError:
+        print(f"❌ TIMEOUT: LLM processing exceeded {timeout_seconds} seconds")
+        print(f"   This indicates the API call is hanging/stuck")
+        print(f"   The issue is likely in the Google API client or model availability")
         
-        print(f"\n🎉 LLM Processing Task 3.3 - COMPLETE!")
-        print(f"🔍 Review files in: {debug_dir}")
+        # Save timeout info
+        timeout_data = {
+            "error": "timeout",
+            "timeout_seconds": timeout_seconds,
+            "timestamp": datetime.now().isoformat(),
+            "recommendation": "Use a more stable model or add timeout to google_utils.py"
+        }
+        
+        with open(debug_dir / "timeout_error.json", 'w') as f:
+            json.dump(timeout_data, f, indent=2)
+        
+        return False
         
     except Exception as e:
-        print(f"❌ Error: {e}")
+        print(f"❌ ERROR: {e}")
         import traceback
         traceback.print_exc()
         
-        # Save error log
-        error_filename = f"error_{timestamp}.txt"
-        error_save_path = os.path.join(debug_dir, error_filename)
-        with open(error_save_path, 'w', encoding='utf-8') as f:
-            f.write(f"Error during processing:\n")
-            f.write(f"Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-            f.write(f"Error: {str(e)}\n\n")
-            f.write("Traceback:\n")
-            f.write(traceback.format_exc())
-        print(f"💾 Error log saved: {error_save_path}")
+        # Save error info
+        error_data = {
+            "error": str(e),
+            "error_type": e.__class__.__name__,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+        with open(debug_dir / "error_log.json", 'w') as f:
+            json.dump(error_data, f, indent=2)
+        
+        return False
+
+async def test_stable_model():
+    """Test with a known stable model"""
+    print("\n🔧 Testing with Stable Model (gemini-1.5-flash)")
+    print("=" * 60)
+    
+    # Temporarily change config to use stable model
+    config_path = current_dir / "config.json"
+    with open(config_path, 'r') as f:
+        original_config = json.load(f)
+    
+    # Set stable model
+    stable_config = original_config.copy()
+    stable_config["google"]["default_model"] = "gemini-1.5-flash"
+    
+    with open(config_path, 'w') as f:
+        json.dump(stable_config, f, indent=2)
+    
+    print(f"⚙️ Temporarily using stable model: gemini-1.5-flash")
+    
+    try:
+        result = await test_with_timeout()
+        return result
+    finally:
+        # Restore original config
+        with open(config_path, 'w') as f:
+            json.dump(original_config, f, indent=2)
+        print(f"🔄 Restored original model configuration")
+
+async def main():
+    """Run all tests"""
+    print("🧪 Final LLM Hanging Issue Diagnosis")
+    print("=" * 60)
+    
+    # Test 1: Current model with timeout
+    print("\n📋 Test 1: Current Model with Timeout Protection")
+    success1 = await test_with_timeout()
+    
+    if not success1:
+        # Test 2: Stable model with timeout
+        print("\n📋 Test 2: Stable Model with Timeout Protection")
+        success2 = await test_stable_model()
+        
+        if success2:
+            print("\n💡 DIAGNOSIS: The issue is with the unstable preview model")
+            print("   SOLUTION: Update config.json to use 'gemini-1.5-flash'")
+        else:
+            print("\n💡 DIAGNOSIS: The issue is deeper - likely timeout or API problems")
+            print("   SOLUTION: Add timeout protection to google_utils.py")
+    else:
+        print("\n🎉 SUCCESS: No hanging issues detected!")
+    
+    print(f"\n📊 Final Recommendation:")
+    if success1:
+        print("   ✅ Current setup works - no changes needed")
+    else:
+        print("   🔧 Implement timeout protection in google_utils.py")
+        print("   🔄 Switch to stable model: gemini-1.5-flash")
 
 if __name__ == "__main__":
-    asyncio.run(test_final_excel_processing()) 
+    asyncio.run(main()) 
