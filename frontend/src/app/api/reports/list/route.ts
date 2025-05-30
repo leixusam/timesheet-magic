@@ -7,7 +7,7 @@ export async function GET(request: NextRequest) {
     const limit = searchParams.get('limit') || '50';
     
     const backendUrl = process.env.BACKEND_URL || 'https://timesheet-magic-backend.fly.dev';
-    const response = await fetch(`${backendUrl}/reports/list?skip=${skip}&limit=${limit}`);
+    const response = await fetch(`${backendUrl}/api/reports/list?skip=${skip}&limit=${limit}`);
     
     if (!response.ok) {
       throw new Error(`Backend responded with ${response.status}`);

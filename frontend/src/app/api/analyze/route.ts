@@ -57,7 +57,7 @@ export async function POST(request: NextRequest) {
     backendFormData.append('file', file);
 
     // Forward the request to the FastAPI backend
-    const backendResponse = await fetch(`${BACKEND_URL}/analyze`, {
+    const backendResponse = await fetch(`${BACKEND_URL}/api/analyze`, {
       method: 'POST',
       body: backendFormData,
       // Don't set Content-Type header - let fetch handle multipart/form-data

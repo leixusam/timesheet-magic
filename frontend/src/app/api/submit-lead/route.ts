@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Forward the lead data to the FastAPI backend
-    const backendResponse = await fetch(`${BACKEND_URL}/submit-lead`, {
+    const backendResponse = await fetch(`${BACKEND_URL}/api/submit-lead`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

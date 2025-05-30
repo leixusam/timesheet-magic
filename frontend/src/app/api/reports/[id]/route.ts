@@ -11,7 +11,7 @@ export async function GET(
   try {
     const { id } = await params;
     const backendUrl = process.env.BACKEND_URL || 'https://timesheet-magic-backend.fly.dev';
-    const response = await fetch(`${backendUrl}/reports/${id}`);
+    const response = await fetch(`${backendUrl}/api/reports/${id}`);
     
     if (!response.ok) {
       if (response.status === 404) {
@@ -41,7 +41,7 @@ export async function DELETE(
   try {
     const { id } = await params;
     const backendUrl = process.env.BACKEND_URL || 'https://timesheet-magic-backend.fly.dev';
-    const response = await fetch(`${backendUrl}/reports/${id}`, {
+    const response = await fetch(`${backendUrl}/api/reports/${id}`, {
       method: 'DELETE',
     });
     
