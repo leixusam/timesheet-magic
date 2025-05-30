@@ -1,41 +1,32 @@
 """
-Compliance Rules Module for Timesheet Analysis
+Compliance Rules Module for Time Sheet Magic
 
-This module implements various labor law compliance checks including:
-- Meal break violations
-- Rest break violations (future)
-- Overtime violations (future)
-- Other compliance rules
+This module implements compliance checking logic for various labor law violations including:
+- Meal break violations  
+- Rest break violations
+- Daily and weekly overtime
+- Daily double overtime
+- Duplicate employee detection
 
-Based on California Labor Law (can be extended for other jurisdictions)
+Implements task 3.4 from the PRD.
 """
 
-import os
-import sys
 import re
-from datetime import datetime, timedelta, date, time
-from typing import List, Dict, Optional, Tuple, Set
-from collections import defaultdict
-import json
-from difflib import SequenceMatcher
+from datetime import datetime, timedelta, time as dt_time
+from typing import List, Dict, Optional, Tuple
+from collections import defaultdict, Counter
+import pytz
 
-# Add the parent directory to sys.path to import from models
-current_dir = os.path.dirname(os.path.abspath(__file__))
-parent_dir = os.path.dirname(current_dir)
-if parent_dir not in sys.path:
-    sys.path.append(parent_dir)
+from app.models.schemas import LLMParsedPunchEvent, ViolationInstance
+from app.core.logging_config import get_logger
 
-from app.models.schemas import (
-    LLMParsedPunchEvent, 
-    ViolationInstance, 
-    EmployeeReportDetails,
-    LLMProcessingOutput
-)
+# Initialize logger for this module
+logger = get_logger("compliance")
 
 class WorkShift:
     """Represents a single work shift for an employee on a specific date"""
     
-    def __init__(self, employee_identifier: str, shift_date: date):
+    def __init__(self, employee_identifier: str, shift_date: datetime):
         self.employee_identifier = employee_identifier
         self.shift_date = shift_date
         self.punch_events: List[LLMParsedPunchEvent] = []
@@ -572,7 +563,7 @@ def detect_weekly_overtime_violations(punch_events: List[LLMParsedPunchEvent]) -
     
     return violations
 
-def _group_shifts_by_workweek(shifts: List[WorkShift]) -> Dict[date, List[WorkShift]]:
+def _group_shifts_by_workweek(shifts: List[WorkShift]) -> Dict[datetime, List[WorkShift]]:
     """
     Group shifts by workweek (Sunday-Saturday)
     
@@ -592,7 +583,7 @@ def _group_shifts_by_workweek(shifts: List[WorkShift]) -> Dict[date, List[WorkSh
     
     return workweeks
 
-def _check_weekly_overtime(employee_id: str, week_start_date: date, week_shifts: List[WorkShift]) -> Optional[ViolationInstance]:
+def _check_weekly_overtime(employee_id: str, week_start_date: datetime, week_shifts: List[WorkShift]) -> Optional[ViolationInstance]:
     """Check a single workweek for overtime violations"""
     
     # California weekly overtime threshold
@@ -1629,7 +1620,7 @@ def detect_consolidated_meal_break_violations(consolidated_shifts: Dict[str, Lis
     
     return violations
 
-def _create_consolidated_daily_shift(employee_id: str, shift_date: date, daily_shifts: List[WorkShift]) -> WorkShift:
+def _create_consolidated_daily_shift(employee_id: str, shift_date: datetime, daily_shifts: List[WorkShift]) -> WorkShift:
     """
     Create a single consolidated shift from multiple shifts on the same day.
     
