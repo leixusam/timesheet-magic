@@ -14,11 +14,11 @@ export const metadata: Metadata = {
   description: "AI-powered timesheet analysis that detects compliance issues, overtime violations, and cost optimization opportunities in seconds.",
   icons: {
     icon: [
-      { url: '/favicon-16x16.png', sizes: '16x16', type: 'image/png' },
-      { url: '/favicon-32x32.png', sizes: '32x32', type: 'image/png' },
-      { url: '/favicon.ico' },
+      { url: '/favicon-16x16.png?t=1748647908', sizes: '16x16', type: 'image/png' },
+      { url: '/favicon-32x32.png?t=1748647908', sizes: '32x32', type: 'image/png' },
+      { url: '/favicon.ico?t=1748647908' },
     ],
-    apple: { url: '/apple-touch-icon.png', sizes: '180x180', type: 'image/png' },
+    apple: { url: '/apple-touch-icon.png?t=1748647908', sizes: '180x180', type: 'image/png' },
   },
   manifest: '/site.webmanifest',
   themeColor: '#1746d4',
@@ -33,12 +33,6 @@ export default function RootLayout({
   return (
     <html lang="en" className={inter.variable}>
       <head>
-        {/* Explicit favicon links for maximum compatibility */}
-        <link rel="icon" type="image/x-icon" href="/favicon.ico?v=3" />
-        <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png?v=3" />
-        <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png?v=3" />
-        <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=3" />
-        
         {/* Task 5.1: DNS prefetch and resource hints for performance */}
         <link rel="dns-prefetch" href="//fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
