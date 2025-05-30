@@ -56,6 +56,11 @@
 - `backend/app/tests/db/test_supabase_client.py` - Unit tests for `supabase_client.py`.
 - `backend/app/tests/test_integration_analysis.py` - Comprehensive integration tests for the complete analysis pipeline with configurable options and reusable test framework.
 - `test_integration.py` - End-to-end integration test for the complete analysis pipeline (task 3.6).
+- `backend/app/core/logging_config.py` - Comprehensive logging configuration module implementing structured logging for the backend (task 5.1).
+- `backend/app/core/error_handlers.py` - Robust error handling system with standardized error responses, appropriate HTTP status codes, and clear error messages for the frontend (task 5.3).
+- `backend/app/tests/core/test_error_handlers.py` - Comprehensive unit tests for the error handling system (task 5.3).
+- `backend/requirements.txt` - Updated with Supabase Python client dependency for database integration.
+- `backend/llm_utils/` - LLM utility functions (moved from root directory for better organization and simplified Docker builds).
 
 ### Notes
 
@@ -121,13 +126,13 @@
   - [ ] 4.9 Ensure report is mobile-responsive (Design Considerations).
   - [ ] 4.10 Implement UI for parsing error messages with "Try Again" and "Upload Different File" options (FR-7).
   - [ ] 4.11 Basic UI styling for the report page using Tailwind CSS (Design Considerations).
-- [ ] 5.0 Implement Backend: Logging and Error Handling
-  - [ ] 5.1 Implement basic logging in `analysis.py` and other core backend modules (FR-9):
-    - [ ] 5.1.1 Log raw input type, parse success/failure, processing time.
-  - [ ] 5.2 Develop `supabase_client.py` module for database interaction.
-    - [ ] 5.2.1 Function to log captured lead information (Manager Name, Email, Phone, Store Name, Address) to Supabase table (FR-2, FR-9).
-    - [ ] 5.2.2 Function to log basic analysis metadata (e.g., request ID, success/failure, timestamp) (FR-9).
-  - [ ] 5.3 Implement robust error handling in FastAPI endpoint and core modules, returning appropriate HTTP status codes and error messages to frontend.
+- [x] 5.0 Implement Backend: Logging and Error Handling
+  - [x] 5.1 Implement basic logging in `analysis.py` and other core backend modules (FR-9):
+    - [x] 5.1.1 Log raw input type, parse success/failure, processing time.
+  - [x] 5.2 Develop `supabase_client.py` module for database interaction.
+    - [x] 5.2.1 Function to log captured lead information (Manager Name, Email, Phone, Store Name, Address) to Supabase table (FR-2, FR-9).
+    - [x] 5.2.2 Function to log basic analysis metadata (e.g., request ID, success/failure, timestamp) (FR-9).
+  - [x] 5.3 Implement robust error handling in FastAPI endpoint and core modules, returning appropriate HTTP status codes and error messages to frontend.
 - [ ] 6.0 End-to-End Integration, Testing, and Refinement
   - [ ] 6.1 Write unit tests for key frontend components and hooks (e.g., `UploadForm.test.tsx`, `ReportDisplay.test.tsx`, `useFileUpload.test.ts`, `useLeadCapture.test.ts`).
   - [ ] 6.2 Write unit tests for backend core logic (`test_llm_processing.py`, `test_compliance_rules.py`, `test_reporting.py`

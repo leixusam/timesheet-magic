@@ -4,4 +4,6 @@ openai
 google-genai
 python-dotenv
 requests
-python-multipart 
+python-multipart
+sqlalchemy
+psycopg2-binary 

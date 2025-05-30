@@ -1,6 +1,7 @@
 'use client';
 
 import ReportDisplay from '@/components/ReportDisplay';
+import Link from 'next/link';
 
 // Mock data based on the FinalAnalysisReport schema
 const mockAnalysisReport = {
@@ -140,9 +141,20 @@ export default function DemoPage() {
           <h1 className="text-4xl font-bold text-gray-900 mb-4">
             ReportDisplay Component Demo
           </h1>
-          <p className="text-gray-600">
+          <p className="text-gray-600 mb-6">
             This is a preview of the timesheet analysis report with sample data
           </p>
+          <div className="flex gap-4 justify-center">
+            <Link 
+              href="/reports"
+              className="inline-flex items-center gap-2 px-6 py-3 bg-gray-600 text-white rounded-lg font-medium hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 transition-colors shadow-sm"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              View Saved Reports
+            </Link>
+          </div>
         </div>
         
         <ReportDisplay 

@@ -65,6 +65,7 @@ interface FinalAnalysisReport {
 interface ReportDisplayProps {
   analysisReport: FinalAnalysisReport;
   onNewAnalysis?: () => void; // Callback to start a new analysis
+  onDeleteReport?: () => void; // Callback when report is deleted
   requestedBy?: string; // Manager who requested the report
   requestedAt?: string; // Timestamp when report was requested
 }
@@ -72,11 +73,14 @@ interface ReportDisplayProps {
 const ReportDisplay: React.FC<ReportDisplayProps> = ({ 
   analysisReport, 
   onNewAnalysis,
+  onDeleteReport,
   requestedBy,
   requestedAt
 }) => {
   const [viewMode, setViewMode] = useState<'by-employee' | 'by-type'>('by-employee');
   const [isDisclaimersExpanded, setIsDisclaimersExpanded] = useState(false); // Changed to false by default
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   
   const { 
     request_id,
@@ -110,6 +114,34 @@ const ReportDisplay: React.FC<ReportDisplayProps> = ({
       });
     } catch {
       return timestamp;
+    }
+  };
+
+  // Handle delete report
+  const handleDeleteReport = async () => {
+    if (!request_id) return;
+    
+    setIsDeleting(true);
+    try {
+      const response = await fetch(`/api/reports/${request_id}`, {
+        method: 'DELETE',
+      });
+      
+      if (response.ok) {
+        // Call the callback to notify parent component
+        if (onDeleteReport) {
+          onDeleteReport();
+        }
+        // Could also show a success message here
+      } else {
+        throw new Error('Failed to delete report');
+      }
+    } catch (error) {
+      console.error('Error deleting report:', error);
+      // Could show an error message here
+    } finally {
+      setIsDeleting(false);
+      setShowDeleteConfirm(false);
     }
   };
 
@@ -689,6 +721,48 @@ const ReportDisplay: React.FC<ReportDisplayProps> = ({
                 </svg>
                 New Analysis
               </button>
+            )}
+
+            {/* Delete Button */}
+            {!showDeleteConfirm ? (
+              <button
+                onClick={() => setShowDeleteConfirm(true)}
+                className="inline-flex items-center gap-2 px-6 py-3 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition-colors shadow-sm"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+                Delete Report
+              </button>
+            ) : (
+              <div className="flex items-center gap-3 px-4 py-2 bg-red-50 border border-red-200 rounded-lg">
+                <span className="text-sm text-red-800 font-medium">Delete this report permanently?</span>
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleDeleteReport}
+                    disabled={isDeleting}
+                    className="inline-flex items-center gap-1 px-3 py-1.5 bg-red-600 text-white text-sm rounded font-medium hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    {isDeleting ? (
+                      <>
+                        <svg className="w-3 h-3 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                        </svg>
+                        Deleting...
+                      </>
+                    ) : (
+                      'Yes, Delete'
+                    )}
+                  </button>
+                  <button
+                    onClick={() => setShowDeleteConfirm(false)}
+                    disabled={isDeleting}
+                    className="inline-flex items-center px-3 py-1.5 bg-gray-200 text-gray-800 text-sm rounded font-medium hover:bg-gray-300 disabled:opacity-50 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
             )}
           </div>
         </div>

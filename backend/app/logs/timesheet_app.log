@@ -33,3 +33,9 @@
 2025-05-29 17:01:15 | WARNING  | timesheet.supabase | log_analysis_metadata:200 | [request_id=error-test-20250529-170115] Supabase client not available
 2025-05-29 17:01:15 | INFO     | timesheet.supabase | log_database_operation:303 | [request_id=error-test-20250529-170115] Database INSERT FAILED | Table: analysis_metadata
 2025-05-29 17:01:15 | ERROR    | timesheet.supabase | log_database_operation:309 | [request_id=error-test-20250529-170115] Database error | Operation: INSERT | Table: analysis_metadata | Error: Supabase client not available
+2025-05-29 18:28:33 | INFO     | timesheet | setup_logging:170 | Logging configured - Level: INFO, File logging: True
+2025-05-29 18:29:14 | INFO     | timesheet | setup_logging:170 | Logging configured - Level: INFO, File logging: True
+2025-05-29 18:29:16 | INFO     | timesheet | setup_logging:170 | Logging configured - Level: INFO, File logging: True
+2025-05-29 18:29:42 | INFO     | timesheet | setup_logging:170 | Logging configured - Level: INFO, File logging: True
+2025-05-29 18:30:07 | INFO     | timesheet | setup_logging:170 | Logging configured - Level: INFO, File logging: True
+2025-05-29 18:33:23 | INFO     | timesheet | setup_logging:170 | Logging configured - Level: INFO, File logging: True
