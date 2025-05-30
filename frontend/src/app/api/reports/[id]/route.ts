@@ -1,12 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+interface RouteParams {
+  params: Promise<{ id: string }>;
+}
+
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: RouteParams
 ) {
   try {
+    const { id } = await params;
     const backendUrl = process.env.BACKEND_URL || 'http://localhost:8001';
-    const response = await fetch(`${backendUrl}/reports/${params.id}`);
+    const response = await fetch(`${backendUrl}/reports/${id}`);
     
     if (!response.ok) {
       if (response.status === 404) {
@@ -31,11 +36,12 @@ export async function GET(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: RouteParams
 ) {
   try {
+    const { id } = await params;
     const backendUrl = process.env.BACKEND_URL || 'http://localhost:8001';
-    const response = await fetch(`${backendUrl}/reports/${params.id}`, {
+    const response = await fetch(`${backendUrl}/reports/${id}`, {
       method: 'DELETE',
     });
     

@@ -230,7 +230,7 @@ const UploadFormContent: React.FC<UploadFormProps> = ({ onAnalysisComplete }) =>
           ) : isDragActive ? (
             <p className="text-gray-900 font-medium">Drop the file here ...</p>
           ) : (
-            <p className="text-gray-900 font-medium">Drag 'n' drop a file here, or click to select a file</p>
+            <p className="text-gray-900 font-medium">Drag &lsquo;n&rsquo; drop a file here, or click to select a file</p>
           )}
           <p className="text-xs text-gray-700 mt-2">
             Supported formats: CSV, XLSX, PDF, JPG, PNG, TXT (Max size: 10MB)
