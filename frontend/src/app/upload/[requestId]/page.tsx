@@ -43,7 +43,7 @@ async function getRequestData(requestId: string): Promise<RequestData | null> {
     }
     
     // Call the backend API directly from server component
-    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
+    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'https://timesheet-magic-backend.fly.dev';
     const response = await fetch(`${backendUrl}/api/reports/${requestId}`, {
       cache: 'no-store', // Always fetch fresh data
       headers: {

@@ -1,0 +1,53 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+## 🚫 Rule: Avoid Deprecated `google.generativeai` Import
+
+### Summary
+Do **not** use or generate any code that imports from `google.generativeai`. This library is deprecated and replaced by `google.genai`.
+
+---
+
+### ❌ Incorrect (Deprecated)
+```python
+import google.generativeai
+from google.generativeai import Chat
+model = google.generativeai.GenerativeModel("gemini-pro")
+
+
+⸻
+
+✅ Correct (Use google.genai)
+
+import google.genai
+from google.genai import GenerativeModel
+model = GenerativeModel("gemini-pro")
+
+
+⸻
+
+Why This Matters
+
+Google has officially deprecated the google.generativeai module. The new and supported SDK is google.genai, which follows updated APIs and naming conventions. Using the deprecated version may result in compatibility issues, missing features, or lack of future support.
+
+⸻
+
+Applies To
+	•	All code completions and generations
+	•	Manual and AI-assisted refactoring
+	•	Any new file or module setup
+
+⸻
+
+Reference
+
+📚 Google GenAI Python SDK Documentation
+https://googleapis.github.io/python-genai/
+
+⸻
+
+Reminder for Cursor
+
+When generating or editing Python code, never suggest or auto-insert google.generativeai. Always default to google.genai for generative AI functionality.

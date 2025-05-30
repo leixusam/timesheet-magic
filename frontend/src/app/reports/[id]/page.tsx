@@ -25,7 +25,7 @@ interface ReportPageProps {
 async function getReport(reportId: string): Promise<FinalAnalysisReport | null> {
   try {
     // Call the backend API directly from server component
-    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
+    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'https://timesheet-magic-backend.fly.dev';
     const response = await fetch(`${backendUrl}/api/reports/${reportId}`, {
       // Add cache control for better performance
       next: { revalidate: 300 }, // Revalidate every 5 minutes

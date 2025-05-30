@@ -1,0 +1,10 @@
+2025-05-29 22:27:12 | INFO     | timesheet | setup_logging:170 | Logging configured - Level: INFO, File logging: True
+2025-05-29 22:27:52 | INFO     | timesheet.llm | parse_file_to_structured_data:347 | LLM successfully parsed 86 punch events from 8.05-short.csv
+2025-05-29 22:29:23 | INFO     | timesheet | setup_logging:170 | Logging configured - Level: INFO, File logging: True
+2025-05-29 22:30:02 | INFO     | timesheet.llm | parse_file_to_structured_data:347 | LLM successfully parsed 86 punch events from 8.05-short.csv
+2025-05-29 22:30:38 | INFO     | timesheet | setup_logging:170 | Logging configured - Level: INFO, File logging: True
+2025-05-29 22:31:18 | INFO     | timesheet.llm | parse_file_to_structured_data:347 | LLM successfully parsed 86 punch events from 8.05-short.csv
+2025-05-29 22:31:18 | INFO     | timesheet.reporting | compile_general_compliance_violations:464 | Compliance check completed | Violations found: 57
+2025-05-29 22:32:04 | INFO     | timesheet | setup_logging:170 | Logging configured - Level: INFO, File logging: True
+2025-05-29 22:32:45 | INFO     | timesheet.llm | parse_file_to_structured_data:347 | LLM successfully parsed 86 punch events from 8.05-short.csv
+2025-05-29 22:32:45 | INFO     | timesheet.reporting | compile_general_compliance_violations:464 | Compliance check completed | Violations found: 57

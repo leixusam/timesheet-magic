@@ -12,7 +12,7 @@ interface SavedReportSummary {
   overtime_cost?: number;
 }
 
-const backendUrl = process.env.BACKEND_URL || 'http://localhost:8000';
+const backendUrl = process.env.BACKEND_URL || process.env.NEXT_PUBLIC_BACKEND_URL || 'https://timesheet-magic-backend.fly.dev';
 
 export async function GET(request: NextRequest) {
   try {
