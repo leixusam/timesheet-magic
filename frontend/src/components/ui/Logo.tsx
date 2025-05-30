@@ -1,6 +1,7 @@
 'use client';
 
 import Image from 'next/image';
+import { useState } from 'react';
 
 interface LogoProps {
   size?: 'sm' | 'md' | 'lg';
@@ -9,6 +10,8 @@ interface LogoProps {
 }
 
 export default function Logo({ size = 'md', showText = true, className = '' }: LogoProps) {
+  const [imageError, setImageError] = useState(false);
+  
   const sizeClasses = {
     sm: 'w-6 h-6',
     md: 'w-8 h-8', 
@@ -30,15 +33,22 @@ export default function Logo({ size = 'md', showText = true, className = '' }: L
   return (
     <div className={`flex items-center ${className}`}>
       <div className={`${sizeConfig.container} relative flex-shrink-0`}>
-        {/* ShiftIQ Icon - High Resolution */}
-        <Image 
-          src="/icon-high-res.png" 
-          className={`${sizeConfig.image} rounded-lg`}
-          alt="ShiftIQ"
-          width={256} 
-          height={256}
-          priority={size === 'lg'}
-        />
+        {!imageError ? (
+          <Image 
+            src="/favicon-32x32.png" 
+            className={`${sizeConfig.image} rounded-lg`}
+            alt="ShiftIQ"
+            width={32} 
+            height={32}
+            priority={size === 'lg'}
+            onError={() => setImageError(true)}
+          />
+        ) : (
+          // Fallback to text-based logo if image fails
+          <div className={`${sizeConfig.container} bg-indigo-600 rounded-lg flex items-center justify-center`}>
+            <span className="text-white font-bold text-sm">S</span>
+          </div>
+        )}
       </div>
       {showText && (
         <span className={`${sizeConfig.text} font-semibold text-gray-900 ml-3`}>
