@@ -404,7 +404,7 @@ Please systematically extract all punch events. For each event, identify:
 Be thorough and extract every single punch event you find in this CSV data.
 """
         else:
-        text_prompt = f"""
+            text_prompt = f"""
 You are analyzing a complete timesheet file. This file contains ALL the time punch data for multiple employees.
 
 CRITICAL TASK: Extract EVERY SINGLE time punch event from this file.

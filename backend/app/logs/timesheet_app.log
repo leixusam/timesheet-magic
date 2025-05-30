@@ -3376,3 +3376,18 @@
 2025-05-30 15:50:23 | DEBUG    | timesheet.analysis | get_report:883 | [request_id=80bf91c0-226e-4916-9100-f4a4c2dff0b1] Total reports in database: 87
 2025-05-30 15:50:23 | DEBUG    | timesheet.analysis | get_report:894 | [request_id=80bf91c0-226e-4916-9100-f4a4c2dff0b1] Found report using string ID: 80bf91c0-226e-4916-9100-f4a4c2dff0b1
 2025-05-30 15:50:23 | INFO     | timesheet.analysis | get_report:943 | [request_id=80bf91c0-226e-4916-9100-f4a4c2dff0b1] Report 80bf91c0-226e-4916-9100-f4a4c2dff0b1 retrieved successfully with status: error_parsing_failed
+2025-05-30 16:16:15 | INFO     | timesheet | setup_logging:170 | Logging configured - Level: DEBUG, File logging: True
+2025-05-30 16:16:15 | INFO     | timesheet.main | <module>:37 | Database tables created/verified
+2025-05-30 16:16:15 | INFO     | timesheet.main | <module>:87 | Time Sheet Magic API started successfully
+2025-05-30 16:16:15 | INFO     | timesheet.main | <module>:88 | Registered endpoints: /api/analyze, /api/submit-lead, /api/reports/*
+2025-05-30 16:16:15 | INFO     | timesheet.main | <module>:89 | Global error handlers registered for standardized error responses
+2025-05-30 16:19:54 | INFO     | timesheet | setup_logging:170 | Logging configured - Level: DEBUG, File logging: True
+2025-05-30 16:19:54 | INFO     | timesheet.main | <module>:37 | Database tables created/verified
+2025-05-30 16:19:54 | INFO     | timesheet.main | <module>:87 | Time Sheet Magic API started successfully
+2025-05-30 16:19:54 | INFO     | timesheet.main | <module>:88 | Registered endpoints: /api/analyze, /api/submit-lead, /api/reports/*
+2025-05-30 16:19:54 | INFO     | timesheet.main | <module>:89 | Global error handlers registered for standardized error responses
+2025-05-30 16:20:14 | INFO     | timesheet | setup_logging:170 | Logging configured - Level: DEBUG, File logging: True
+2025-05-30 16:20:14 | INFO     | timesheet.main | <module>:37 | Database tables created/verified
+2025-05-30 16:20:14 | INFO     | timesheet.main | <module>:87 | Time Sheet Magic API started successfully
+2025-05-30 16:20:14 | INFO     | timesheet.main | <module>:88 | Registered endpoints: /api/analyze, /api/submit-lead, /api/reports/*
+2025-05-30 16:20:14 | INFO     | timesheet.main | <module>:89 | Global error handlers registered for standardized error responses

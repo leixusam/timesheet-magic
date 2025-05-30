@@ -12,7 +12,8 @@ from ..models.schemas import (
 # Report related functions
 def get_report(db: Session, report_id: UUID) -> Optional[SavedReport]:
     # Remove undefer to avoid potential session issues with recently created reports
-    return db.query(SavedReport).filter(SavedReport.id == report_id).first()
+    # Convert UUID to string since SavedReport.id is defined as String
+    return db.query(SavedReport).filter(SavedReport.id == str(report_id)).first()
 
 def get_reports_paginated(
     db: Session, skip: int = 0, limit: int = 10, 
@@ -65,7 +66,8 @@ def update_report_status_and_save_data(
     total_violation_count: Optional[int] = None,
     total_employee_count: Optional[int] = None
 ) -> Optional[SavedReport]:
-    db_report = db.query(SavedReport).filter(SavedReport.id == report_id).first()
+    # Convert UUID to string since SavedReport.id is defined as String
+    db_report = db.query(SavedReport).filter(SavedReport.id == str(report_id)).first()
     if db_report:
         # Note: SavedReport doesn't have status/status_message fields in current schema
         # db_report.status = status
@@ -93,7 +95,8 @@ def delete_report_and_associated_data(db: Session, report_id: UUID) -> bool:
     """
     Deletes a SavedReport and all its associated data.
     """
-    report = db.query(SavedReport).filter(SavedReport.id == report_id).first()
+    # Convert UUID to string since SavedReport.id is defined as String
+    report = db.query(SavedReport).filter(SavedReport.id == str(report_id)).first()
     if not report:
         return False
 

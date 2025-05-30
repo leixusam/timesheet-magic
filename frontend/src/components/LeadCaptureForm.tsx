@@ -26,14 +26,14 @@ export default function LeadCaptureForm({
     success: false
   });
 
-  // Initialize lead data with the request ID and sample data for faster debugging
+  // Initialize lead data with empty values for production
   const initialLeadData: LeadData = {
     analysisId: requestId,
-    managerName: 'John Smith',
-    managerEmail: 'john.smith@example.com',
-    managerPhone: '(555) 123-4567',
-    storeName: 'Downtown Coffee Shop',
-    storeAddress: '123 Main St, San Francisco, CA 94102'
+    managerName: '',
+    managerEmail: '',
+    managerPhone: '',
+    storeName: '',
+    storeAddress: ''
   };
 
   const {
@@ -160,6 +160,7 @@ export default function LeadCaptureForm({
               name="managerName"
               value={leadData.managerName}
               onChange={handleInputChange}
+              autoComplete="name"
               className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
                 errors.managerName ? 'border-red-300' : 'border-gray-300'
               }`}
@@ -181,6 +182,7 @@ export default function LeadCaptureForm({
               name="managerEmail"
               value={leadData.managerEmail}
               onChange={handleInputChange}
+              autoComplete="email"
               className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
                 errors.managerEmail ? 'border-red-300' : 'border-gray-300'
               }`}
@@ -202,6 +204,7 @@ export default function LeadCaptureForm({
               name="managerPhone"
               value={leadData.managerPhone}
               onChange={handleInputChange}
+              autoComplete="tel"
               className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
                 errors.managerPhone ? 'border-red-300' : 'border-gray-300'
               }`}
@@ -224,11 +227,11 @@ export default function LeadCaptureForm({
               ref={storeNameInputRef}
               value={leadData.storeName}
               onChange={handleInputChange}
+              autoComplete="organization"
               className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
                 errors.storeName ? 'border-red-300' : 'border-gray-300'
               }`}
               placeholder="Your business name"
-              autoComplete="off"
             />
             {errors.storeName && (
               <p className="mt-1 text-sm text-red-600">{errors.storeName}</p>
@@ -271,11 +274,11 @@ export default function LeadCaptureForm({
             ref={storeAddressInputRef}
             value={leadData.storeAddress}
             onChange={handleInputChange}
+            autoComplete="street-address"
             className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
               errors.storeAddress ? 'border-red-300' : 'border-gray-300'
             }`}
             placeholder="123 Main St, City, State 12345"
-            autoComplete="off"
           />
           {errors.storeAddress && (
             <p className="mt-1 text-sm text-red-600">{errors.storeAddress}</p>
