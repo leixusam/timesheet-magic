@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from app.api.endpoints.analysis import router as analysis_router
 from app.api.endpoints.reports import router as reports_router
 from app.db import create_tables
@@ -23,6 +24,20 @@ app = FastAPI(
     description="Automated timesheet analysis and compliance checking system",
     version="1.0.0",
     debug=False  # Set to True in development for detailed error responses
+)
+
+# Add CORS middleware to allow requests from Vercel frontend
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "https://timesheet-magic.vercel.app",
+        "https://*.vercel.app",  # Allow any Vercel preview deployments
+        "http://localhost:3000",  # Local development
+        "http://localhost:3001",  # Alternative local port
+    ],
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["*"],
 )
 
 # Register global error handlers (task 5.3)
