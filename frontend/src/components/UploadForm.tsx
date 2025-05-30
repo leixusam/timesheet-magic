@@ -97,7 +97,15 @@ const UploadFormContent: React.FC<UploadFormProps> = ({ onAnalysisComplete }) =>
       hasError: !!uploadProgress.error
     });
     
-    // Submit lead data immediately - don't wait for analysis to complete
+    // Check if analysis is complete before submitting lead data
+    if (!uploadProgress.analysisReport) {
+      console.log('[DEBUG] Analysis not complete, waiting for completion before submitting lead');
+      setIsWaitingForAnalysis(true);
+      waitForAnalysisAndProceed();
+      return;
+    }
+
+    // Submit lead data when analysis is already complete
     const submissionResult = await submitLeadData(leadData);
 
     if (submissionResult.success) {

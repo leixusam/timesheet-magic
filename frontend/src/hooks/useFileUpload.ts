@@ -228,8 +228,12 @@ export function useFileUpload(options?: UseFileUploadOptions) {
     setLeadSubmissionProgress({ isLoading: true, error: null, isSuccess: false });
 
     try {
-      // Use actual analysis ID if available, otherwise generate a temporary one
-      const analysisId = uploadProgress.analysisReport?.request_id || `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      // Check if we have a valid analysis report with request_id
+      if (!uploadProgress.analysisReport?.request_id) {
+        throw new Error('Analysis must be completed before submitting lead information. Please wait for analysis to finish.');
+      }
+
+      const analysisId = uploadProgress.analysisReport.request_id;
 
       const response = await fetch('/api/submit-lead', {
         method: 'POST',
