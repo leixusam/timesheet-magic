@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import Image from 'next/image';
+import Logo from './Logo';
 import analytics from '@/utils/analytics';
 
 interface HeaderProps {
@@ -49,11 +49,8 @@ export default function Header({ variant = 'default', showNavigation = true }: H
     }`}>
       <div className="max-w-7xl mx-auto px-6">
         <div className="flex items-center justify-between h-16"> 
-          <div className="flex items-center space-x-3 cursor-pointer" onClick={handleLogoClick}>
-            <div className="w-8 h-8 relative flex-shrink-0">
-              <Image src="/icon-high-res.png" alt="ShiftIQ" className="w-full h-full rounded-lg" width={256} height={256} priority />
-            </div>
-            <span className="font-semibold text-xl text-gray-900">ShiftIQ</span>
+          <div className="cursor-pointer" onClick={handleLogoClick}>
+            <Logo size="md" showText={true} />
           </div>
           
           {showNavigation && variant === 'default' && (
