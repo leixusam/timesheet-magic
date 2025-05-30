@@ -46,7 +46,7 @@ app.add_exception_handler(Exception, general_exception_handler)
 
 # Include routers
 app.include_router(analysis_router, prefix="/api", tags=["analysis"])
-app.include_router(reports_router, prefix="/api", tags=["reports"])
+app.include_router(reports_router, prefix="/api/reports", tags=["reports"])
 
 @app.get("/")
 async def root():
