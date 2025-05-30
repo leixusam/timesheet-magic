@@ -24,8 +24,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the rest of the backend application code into the container at /app
 COPY ./app ./app
 
-# Copy the llm_utils directory from parent directory (needed for LLM processing)
-COPY ../llm_utils ./llm_utils
+# Copy the llm_utils directory (needed for LLM processing)
+COPY ./llm_utils ./llm_utils
+
+# Note: llm_utils needs to be copied manually or the build context needs to change
 
 # Make port 80 available to the world outside this container
 # (FastAPI/Uvicorn will run on this port by default, or we can specify)
