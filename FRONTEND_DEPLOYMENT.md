@@ -13,11 +13,11 @@ Before deploying, you'll need to set up environment variables:
 Create a `.env.local` file in the `frontend/` directory with:
 
 ```bash
+# Backend API URL - Your deployed backend on Fly.dev
+BACKEND_URL=https://timesheet-magic-backend.fly.dev
+
 # Google Maps API Key (for location autocomplete)
 NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=your-google-maps-api-key-here
-
-# Backend API URL (adjust based on your deployment)
-BACKEND_URL=http://localhost:8000
 
 # Supabase Configuration (if using Supabase)
 NEXT_PUBLIC_SUPABASE_URL=your-supabase-url-here
