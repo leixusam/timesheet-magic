@@ -101,20 +101,33 @@ const ReportDisplay: React.FC<ReportDisplayProps> = ({
 
   // Format timestamp for display
   const formatTimestamp = (timestamp?: string) => {
-    if (!timestamp) return 'Just now';
+    if (!timestamp) return '';
     try {
       const date = new Date(timestamp);
-      return date.toLocaleString('en-US', {
+      return date.toLocaleDateString('en-US', { 
         year: 'numeric',
         month: 'short',
         day: 'numeric',
         hour: '2-digit',
         minute: '2-digit',
-        timeZoneName: 'short'
+        hour12: true
       });
-    } catch {
+    } catch (error) {
       return timestamp;
     }
+  };
+
+  // Filter violations to only count Critical and Warning levels (exclude Info)
+  const getCriticalAndWarningViolations = (violations: ViolationInstance[]) => {
+    return violations.filter(violation => {
+      const ruleId = violation.rule_id.toLowerCase();
+      // Critical violations: meal breaks, rest breaks
+      const isCritical = ruleId.includes('meal_break') || ruleId.includes('rest_break');
+      // Warning violations: overtime violations
+      const isWarning = ruleId.includes('daily_ot') || ruleId.includes('weekly_ot') || ruleId.includes('double_ot');
+      // Info violations would be things like general schedule notes (excluded)
+      return isCritical || isWarning;
+    });
   };
 
   // Handle delete report
@@ -148,29 +161,160 @@ const ReportDisplay: React.FC<ReportDisplayProps> = ({
   // Handle error states
   if (status === 'error_parsing_failed' || status === 'error_analysis_failed') {
     return (
-      <div className="max-w-4xl mx-auto p-6 bg-white rounded-lg shadow-lg">
-        <div className="text-center">
-          <div className="bg-red-50 border border-red-200 rounded-md p-4 mb-6">
-            <h2 className="text-xl font-semibold text-red-800 mb-2">
-              Analysis Failed
+      <div className="max-w-4xl mx-auto p-8">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+          {/* Header Section */}
+          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 px-8 py-6 border-b border-gray-100">
+            <div className="flex items-center gap-4">
+              <div className="flex-shrink-0 w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
+                <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+              </div>
+              <div>
+                <h2 className="text-xl font-semibold text-gray-900">
+                  Format Not Yet Supported
             </h2>
-            <p className="text-red-700 mb-4">
-              {status_message || 'An error occurred while processing your timesheet.'}
-            </p>
-            <div className="flex gap-4 justify-center">
+                <p className="text-sm text-gray-600 mt-1">
+                  We're working on adding support for your timesheet format
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Content Section */}
+          <div className="px-8 py-8">
+            <div className="text-center mb-8">
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-6 mb-6">
+                <div className="flex items-start gap-3">
+                  <svg className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <div className="text-left">
+                    <h3 className="text-sm font-medium text-amber-800 mb-2">
+                      File Format Not Recognized
+                    </h3>
+                    <p className="text-sm text-amber-700">
+                      {status_message || 
+                        "We weren't able to process your timesheet format yet. Our system is continuously being updated to support more formats, and we're working hard to add support for files like yours."
+                      }
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-4 text-left">
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <div className="flex items-start gap-3">
+                    <svg className="w-5 h-5 text-blue-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <div>
+                      <h4 className="text-sm font-medium text-blue-800">We're Working On It</h4>
+                      <p className="text-sm text-blue-700 mt-1">
+                        Our team is actively adding support for new timesheet formats. We'll notify you as soon as your format is supported.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                  <div className="flex items-start gap-3">
+                    <svg className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <div>
+                      <h4 className="text-sm font-medium text-green-800">What You Can Do</h4>
+                      <ul className="text-sm text-green-700 mt-1 space-y-1">
+                        <li>• Try a different file format (CSV, Excel, or standard timesheet templates)</li>
+                        <li>• Contact us if you need your specific format prioritized</li>
+                        <li>• Check back soon for format updates</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
               <button
                 onClick={onNewAnalysis}
-                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+                className="inline-flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors shadow-sm"
               >
-                Try Again
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                Try a Different File
               </button>
+              
               <button
-                onClick={onNewAnalysis}
-                className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors"
+                onClick={() => {
+                  // Could implement contact functionality
+                  window.open('mailto:support@timesheetmagic.com?subject=Format Support Request', '_blank');
+                }}
+                className="inline-flex items-center gap-2 px-6 py-3 bg-gray-100 text-gray-700 rounded-lg font-medium hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 transition-colors"
               >
-                Upload Different File
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 4.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                </svg>
+                Contact Support
+              </button>
+
+              <button
+                onClick={() => setShowDeleteConfirm(true)}
+                className="inline-flex items-center gap-2 px-6 py-3 bg-gray-100 text-gray-700 rounded-lg font-medium hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+                Remove File
               </button>
             </div>
+
+            {/* Delete Confirmation */}
+            {showDeleteConfirm && (
+              <div className="mt-6 bg-gray-50 border border-gray-200 rounded-lg p-4">
+                <div className="text-center">
+                  <p className="text-sm text-gray-700 mb-4">
+                    Are you sure you want to remove this file? This action cannot be undone.
+                  </p>
+                  <div className="flex justify-center gap-3">
+                    <button
+                      onClick={handleDeleteReport}
+                      disabled={isDeleting}
+                      className="inline-flex items-center gap-1 px-4 py-2 bg-red-600 text-white text-sm rounded-lg font-medium hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      {isDeleting ? (
+                        <>
+                          <svg className="w-3 h-3 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                          </svg>
+                          Removing...
+                        </>
+                      ) : (
+                        'Yes, Remove File'
+                      )}
+                    </button>
+                    <button
+                      onClick={() => setShowDeleteConfirm(false)}
+                      disabled={isDeleting}
+                      className="inline-flex items-center px-4 py-2 bg-gray-200 text-gray-700 text-sm rounded-lg font-medium hover:bg-gray-300 disabled:opacity-50 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Footer Note */}
+          <div className="bg-gray-50 px-8 py-4 border-t border-gray-100">
+            <p className="text-xs text-gray-500 text-center">
+              <span className="font-medium">Note:</span> We support most common timesheet formats including CSV, Excel (.xlsx, .xls), and standard time clock exports. 
+              New formats are added regularly based on user needs.
+            </p>
           </div>
         </div>
       </div>
@@ -178,137 +322,92 @@ const ReportDisplay: React.FC<ReportDisplayProps> = ({
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-10">
-      {/* Enhanced Hero Section with Report Metadata */}
-      <div className="relative overflow-hidden bg-gradient-to-br from-blue-50 via-white to-indigo-50 rounded-xl border border-blue-100 shadow-lg">
-        {/* Background Pattern */}
-        <div className="absolute inset-0 bg-grid-pattern opacity-5"></div>
-        
-        <div className="relative p-8">
-          {/* Report Metadata Header */}
-          <div className="mb-6 pb-6 border-b border-gray-200">
-            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-              {/* Report Info */}
-              <div className="flex items-start gap-4">
-                <div className="flex-shrink-0 w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
-                  <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                  </svg>
-                </div>
-                <div>
-                  <h1 className="text-3xl font-bold text-gray-900 leading-tight">
-                    Timesheet Analysis Report
-                  </h1>
-                  <div className="flex flex-wrap items-center gap-4 mt-2 text-sm text-gray-600">
-                    <div className="flex items-center gap-2">
-                      <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                      </svg>
-                      <span className="font-medium">{original_filename}</span>
-                    </div>
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 space-y-6">
+      {/* Minimal Header - No Background, Subtle Text */}
+      <div className="flex flex-wrap items-center justify-between gap-4 pb-2">
+        <div className="flex flex-wrap items-center gap-3 text-xs text-gray-500">
+          <span>{original_filename}</span>
                     {requestedBy && (
-                      <div className="flex items-center gap-2">
-                        <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                        </svg>
-                        <span>Requested by <strong>{requestedBy}</strong></span>
-                      </div>
+            <>
+              <span className="text-gray-300">•</span>
+              <span>Requested by {requestedBy}</span>
+            </>
                     )}
-                    <div className="flex items-center gap-2">
-                      <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                      <span>Generated {formatTimestamp(requestedAt)}</span>
-                    </div>
-                    {request_id && (
-                      <div className="flex items-center gap-2">
-                        <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a1.994 1.994 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
-                        </svg>
-                        <span className="text-xs font-mono bg-gray-100 px-2 py-1 rounded">ID: {request_id}</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
+          <span className="text-gray-300">•</span>
+          <span>{formatTimestamp(requestedAt)}</span>
               </div>
 
-              {/* Status Badge Only */}
-              <div className="flex items-center gap-2">
-                <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800">
-                  <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
+        <div className="flex items-center gap-3">
+          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
                   Analysis Complete
                 </span>
-              </div>
             </div>
           </div>
 
-          {/* Consolidated Metrics Grid */}
+      {/* Metrics Grid */}
           {kpis && (
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mb-8">
-              <div className="bg-white rounded-xl px-6 py-4 shadow-sm border border-gray-200">
-                <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Employees</div>
+        <div className="bg-white rounded-lg p-4 shadow-sm border border-gray-200">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="text-center">
                 <div className="text-3xl font-bold text-gray-900">{employee_summaries.length}</div>
+              <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Employees</div>
               </div>
-              <div className="bg-white rounded-xl px-6 py-4 shadow-sm border border-gray-200">
-                <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Total Hours</div>
+            <div className="text-center">
                 <div className="text-3xl font-bold text-blue-600">{kpis.total_scheduled_labor_hours.toFixed(0)}h</div>
+              <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Total Hours</div>
                 <div className="text-xs text-gray-500 mt-1">
                   {kpis.total_regular_hours.toFixed(0)} reg, {kpis.total_overtime_hours.toFixed(0)} OT
                 </div>
               </div>
-              <div className={`rounded-xl px-6 py-4 shadow-sm border ${
-                all_identified_violations.length > 0 
-                  ? 'bg-red-50 border-red-200' 
-                  : 'bg-green-50 border-green-200'
-              }`}>
-                <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Violations</div>
+            <div className="text-center">
                 <div className={`text-3xl font-bold ${
                   all_identified_violations.length > 0 ? 'text-red-700' : 'text-green-700'
                 }`}>
                   {all_identified_violations.length}
                 </div>
+              <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Violations</div>
                 <div className="text-xs text-gray-500 mt-1">
                   {kpis.count_meal_break_violations} meal, {kpis.count_daily_overtime_violations} daily OT
                 </div>
               </div>
-              <div className="bg-white rounded-xl px-6 py-4 shadow-sm border border-gray-200">
-                <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Overtime Cost</div>
+            <div className="text-center">
                 <div className="text-3xl font-bold text-green-600">
                   {kpis.estimated_overtime_cost ? `$${kpis.estimated_overtime_cost.toFixed(0)}` : '$0'}
                 </div>
+              <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Overtime Cost</div>
                 <div className="text-xs text-gray-500 mt-1">Additional labor costs</div>
+            </div>
               </div>
             </div>
           )}
 
-          {/* Enhanced Executive Summary */}
+      {/* Executive Summary with Gradient Background */}
           {overall_report_summary_text && (
-            <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-200">
+        <div className="relative overflow-hidden bg-gradient-to-br from-blue-50 via-white to-indigo-50 rounded-xl shadow-sm border border-blue-200">
+          <div className="absolute inset-0 bg-grid-pattern opacity-5"></div>
+          <div className="relative p-8">
               <div className="flex items-center gap-3 mb-6">
                 <div className="flex-shrink-0 w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
                   <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                   </svg>
                 </div>
-                <h2 className="text-xl font-semibold text-gray-900">Executive Summary</h2>
+              <h2 className="text-xl font-medium text-gray-900">Executive Summary</h2>
               </div>
               
-              {/* Formatted summary text only */}
               <div className="prose prose-blue max-w-none">
-                <div className="text-gray-700 leading-relaxed text-base">
-                  {/* Parse summary text and format it better */}
+              <div className="text-gray-700 leading-relaxed">
+                {/* Parse and format summary text */}
                   {overall_report_summary_text.split(/\.\s+/).map((sentence, index) => {
                     if (!sentence.trim()) return null;
                     
                     return (
-                      <p key={index} className="mb-3">
+                    <p key={index} className="mb-4 text-base">
                         {sentence.split(/(\$[\d,]+(?:\.\d{2})?|\d+(?:\.\d+)?\s*(?:hours?|violations?|employees?)|\d+\s*(?:meal\s+break|daily\s+overtime|weekly\s+overtime|rest\s+break)\s*violations?)/gi).map((part, partIndex) => {
                           // Highlight money amounts
                           if (part.match(/\$[\d,]+(?:\.\d{2})?/)) {
                             return (
-                              <span key={partIndex} className="inline-flex items-center px-2 py-0.5 rounded bg-green-100 text-green-800 font-semibold text-sm">
+                            <span key={partIndex} className="inline-flex items-center px-2 py-0.5 rounded-md bg-green-100 text-green-800 font-semibold text-sm">
                                 {part}
                               </span>
                             );
@@ -316,7 +415,7 @@ const ReportDisplay: React.FC<ReportDisplayProps> = ({
                           // Highlight specific violation types
                           if (part.match(/\d+\s*(?:meal\s+break|daily\s+overtime|weekly\s+overtime|rest\s+break)\s*violations?/gi)) {
                             return (
-                              <span key={partIndex} className="inline-flex items-center px-2 py-0.5 rounded bg-red-100 text-red-800 font-semibold text-sm">
+                            <span key={partIndex} className="inline-flex items-center px-2 py-0.5 rounded-md bg-red-100 text-red-800 font-semibold text-sm">
                                 {part}
                               </span>
                             );
@@ -324,7 +423,7 @@ const ReportDisplay: React.FC<ReportDisplayProps> = ({
                           // Highlight general violation counts
                           if (part.match(/\d+\s*violations?/)) {
                             return (
-                              <span key={partIndex} className="inline-flex items-center px-2 py-0.5 rounded bg-orange-100 text-orange-800 font-semibold text-sm">
+                            <span key={partIndex} className="inline-flex items-center px-2 py-0.5 rounded-md bg-orange-100 text-orange-800 font-semibold text-sm">
                                 {part}
                               </span>
                             );
@@ -332,7 +431,7 @@ const ReportDisplay: React.FC<ReportDisplayProps> = ({
                           // Highlight hour counts
                           if (part.match(/\d+(?:\.\d+)?\s*hours?/)) {
                             return (
-                              <span key={partIndex} className="inline-flex items-center px-2 py-0.5 rounded bg-blue-100 text-blue-800 font-semibold text-sm">
+                            <span key={partIndex} className="inline-flex items-center px-2 py-0.5 rounded-md bg-blue-100 text-blue-800 font-semibold text-sm">
                                 {part}
                               </span>
                             );
@@ -340,33 +439,46 @@ const ReportDisplay: React.FC<ReportDisplayProps> = ({
                           // Highlight employee counts
                           if (part.match(/\d+\s*employees?/)) {
                             return (
-                              <span key={partIndex} className="inline-flex items-center px-2 py-0.5 rounded bg-purple-100 text-purple-800 font-semibold text-sm">
+                            <span key={partIndex} className="inline-flex items-center px-2 py-0.5 rounded-md bg-purple-100 text-purple-800 font-semibold text-sm">
                                 {part}
                               </span>
                             );
                           }
                           return part;
                         })}
-                        {index < overall_report_summary_text.split(/\.\s+/).length - 1 && '.'}
                       </p>
                     );
                   })}
                 </div>
               </div>
+            
+            {/* Key findings summary note */}
+            <div className="mt-6 p-4 bg-white/70 backdrop-blur-sm rounded-lg border border-blue-100">
+              <p className="text-sm text-gray-600">
+                <span className="font-medium">Note:</span> 2 potential duplicate employee names detected - please verify employee records.
+                Review the detailed violations list below and implement the suggested corrective actions to ensure compliance.
+              </p>
             </div>
-          )}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Progressive Disclosure Compliance Violations with Filtering */}
       {all_identified_violations.length > 0 && (
-        <div className="relative overflow-hidden bg-gradient-to-br from-blue-50 via-white to-indigo-50 rounded-xl border border-blue-100 shadow-lg">
-          <div className="absolute inset-0 bg-grid-pattern opacity-5"></div>
-          <div className="relative p-8">
+        <div className="bg-white rounded-xl p-8 shadow-sm border border-gray-200">
             <div className="mb-6">
               <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
                 <div>
-                  <h2 className="text-xl font-semibold text-gray-900 mb-2">Compliance Violations</h2>
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="flex-shrink-0 w-8 h-8 bg-red-100 rounded-lg flex items-center justify-center">
+                    <svg className="w-4 h-4 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.464 0L5.732 15.5c-.77.833.192 2.5 1.732 2.5z" />
+                    </svg>
+                  </div>
+                  <h2 className="text-xl font-medium text-gray-900">
+                    Compliance Violations
+                  </h2>
+                </div>
                   <p className="text-sm text-gray-600">
                     Detailed analysis of potential labor law violations
                     {filteredResults.activeFilterCount > 0 && (
@@ -466,17 +578,21 @@ const ReportDisplay: React.FC<ReportDisplayProps> = ({
                 </p>
               </div>
             )}
-          </div>
         </div>
       )}
 
       {/* Employee Summary Table */}
       {employee_summaries.length > 0 && (
-        <div className="relative overflow-hidden bg-gradient-to-br from-blue-50 via-white to-indigo-50 rounded-xl border border-blue-100 shadow-lg">
-          <div className="absolute inset-0 bg-grid-pattern opacity-5"></div>
-          <div className="relative p-8">
+        <div className="bg-white rounded-xl p-8 shadow-sm border border-gray-200">
             <div className="mb-6">
-              <h2 className="text-xl font-semibold text-gray-900 mb-2">Employee Summary</h2>
+            <div className="flex items-center gap-3 mb-2">
+              <div className="flex-shrink-0 w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center">
+                <svg className="w-4 h-4 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                </svg>
+              </div>
+              <h2 className="text-xl font-medium text-gray-900">Employee Summary</h2>
+            </div>
               <p className="text-sm text-gray-600">Individual employee hours and violation breakdown</p>
             </div>
             <div className="overflow-x-auto -mx-8">
@@ -531,13 +647,15 @@ const ReportDisplay: React.FC<ReportDisplayProps> = ({
                           {employee.double_overtime_hours.toFixed(1)}h
                         </td>
                         <td className="px-4 py-4 whitespace-nowrap">
-                          {employee.violations_for_employee.length > 0 ? (
+                        {(() => {
+                          const criticalAndWarningViolations = getCriticalAndWarningViolations(employee.violations_for_employee);
+                          return criticalAndWarningViolations.length > 0 ? (
                             <div className="flex flex-col gap-1">
                               <span className="inline-flex items-center px-3 py-1.5 rounded-md text-sm font-semibold bg-red-100 text-red-800 border border-red-200">
                                 <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.464 0L5.732 15.5c-.77.833.192 2.5 1.732 2.5z" />
                                 </svg>
-                                {employee.violations_for_employee.length} violation{employee.violations_for_employee.length !== 1 ? 's' : ''}
+                                {criticalAndWarningViolations.length} violation{criticalAndWarningViolations.length !== 1 ? 's' : ''}
                               </span>
                               <div className="text-xs text-gray-600 mt-1">
                                 Requires attention
@@ -555,38 +673,38 @@ const ReportDisplay: React.FC<ReportDisplayProps> = ({
                                 No violations
                               </div>
                             </div>
-                          )}
+                          );
+                        })()}
                         </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
-              </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* Important Notices & Disclaimers - Moved to Bottom */}
-      <div className="relative overflow-hidden bg-gradient-to-br from-yellow-50 via-white to-orange-50 rounded-xl border border-yellow-200 shadow-lg">
-        <div className="absolute inset-0 bg-grid-pattern opacity-5"></div>
-        <div className="relative">
+      {/* Important Notices & Disclaimers - Clean Design */}
+      <div className="bg-white rounded-xl p-8 shadow-sm border border-gray-200">
           <button
             onClick={() => setIsDisclaimersExpanded(!isDisclaimersExpanded)}
-            className="w-full px-8 py-6 text-left flex items-center justify-between"
+          className="w-full text-left flex items-center justify-between"
           >
             <div className="flex items-center gap-3">
-              <svg className="h-5 w-5 text-yellow-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div className="flex-shrink-0 w-8 h-8 bg-amber-100 rounded-lg flex items-center justify-center">
+              <svg className="w-4 h-4 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.464 0L5.732 15.5c-.77.833.192 2.5 1.732 2.5z" />
               </svg>
-              <h3 className="text-lg font-semibold text-yellow-800">
+            </div>
+            <h3 className="text-xl font-medium text-gray-900">
                 Important Notices & Disclaimers
                 {duplicate_name_warnings.length > 0 || parsing_issues_summary.length > 0 || all_identified_violations.length > 0 ? 
                   ` (${[duplicate_name_warnings.length > 0, parsing_issues_summary.length > 0, all_identified_violations.length > 0].filter(Boolean).length} notices)` : ''}
               </h3>
             </div>
             <svg
-              className={`h-5 w-5 text-yellow-600 transition-transform ${isDisclaimersExpanded ? 'rotate-180' : ''}`}
+            className={`h-5 w-5 text-gray-400 transition-transform ${isDisclaimersExpanded ? 'rotate-180' : ''}`}
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -596,16 +714,16 @@ const ReportDisplay: React.FC<ReportDisplayProps> = ({
           </button>
 
           {isDisclaimersExpanded && (
-            <div className="px-8 pb-6 space-y-4">
+          <div className="mt-6 space-y-4">
               {/* Analysis Warning */}
-              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
                 <div className="flex items-start gap-3">
-                  <svg className="h-5 w-5 text-yellow-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="h-5 w-5 text-amber-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.464 0L5.732 15.5c-.77.833.192 2.5 1.732 2.5z" />
                   </svg>
                   <div>
-                    <h3 className="text-sm font-medium text-yellow-800">Analysis Completed with Warnings</h3>
-                    <p className="mt-1 text-sm text-yellow-700">
+                  <h4 className="text-sm font-medium text-amber-800">Analysis Completed with Warnings</h4>
+                  <p className="mt-1 text-sm text-amber-700">
                       Some data may be incomplete. Please review all results carefully.
                     </p>
                   </div>
@@ -614,14 +732,14 @@ const ReportDisplay: React.FC<ReportDisplayProps> = ({
 
               {/* Automated Detection Notice */}
               {all_identified_violations.length > 0 && (
-                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                   <div className="flex items-start gap-3">
-                    <svg className="h-5 w-5 text-yellow-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="h-5 w-5 text-blue-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
                     </svg>
                     <div>
-                      <h3 className="text-sm font-medium text-yellow-800">Automated Detection Notice</h3>
-                      <p className="mt-1 text-sm text-yellow-700">
+                    <h4 className="text-sm font-medium text-blue-800">Automated Detection Notice</h4>
+                    <p className="mt-1 text-sm text-blue-700">
                         Violation detection is based on automated analysis of timesheet data. Please review all flagged items and verify accuracy before taking action. Results should be considered advisory and require human validation.
                       </p>
                     </div>
@@ -633,11 +751,11 @@ const ReportDisplay: React.FC<ReportDisplayProps> = ({
               {duplicate_name_warnings.length > 0 && (
                 <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
                   <div className="flex items-start gap-3">
-                    <svg className="h-5 w-5 text-orange-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="h-5 w-5 text-orange-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
                     </svg>
                     <div className="flex-1">
-                      <h3 className="text-sm font-medium text-orange-800">Potential Duplicate Employee Names</h3>
+                    <h4 className="text-sm font-medium text-orange-800">Potential Duplicate Employee Names</h4>
                       <p className="mt-1 text-sm text-orange-700 mb-3">
                         Similar employee names were detected that may represent the same person. Please verify and consolidate if necessary.
                       </p>
@@ -658,11 +776,11 @@ const ReportDisplay: React.FC<ReportDisplayProps> = ({
               {parsing_issues_summary.length > 0 && (
                 <div className="bg-red-50 border border-red-200 rounded-lg p-4">
                   <div className="flex items-start gap-3">
-                    <svg className="h-5 w-5 text-red-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="h-5 w-5 text-red-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
                     <div className="flex-1">
-                      <h3 className="text-sm font-medium text-red-800">Data Parsing Issues</h3>
+                    <h4 className="text-sm font-medium text-red-800">Data Parsing Issues</h4>
                       <p className="mt-1 text-sm text-red-700 mb-3">
                         Some data could not be properly parsed from the uploaded file. This may affect analysis accuracy.
                       </p>
@@ -680,13 +798,11 @@ const ReportDisplay: React.FC<ReportDisplayProps> = ({
               )}
             </div>
           )}
-        </div>
       </div>
 
       {/* Action Buttons at Bottom */}
-      <div className="relative overflow-hidden bg-gradient-to-br from-gray-50 via-white to-gray-100 rounded-xl border border-gray-200 shadow-lg">
-        <div className="absolute inset-0 bg-grid-pattern opacity-5"></div>
-        <div className="relative p-8">
+      <div className="bg-white rounded-xl p-8 shadow-sm border border-gray-200">
+        <div className="flex flex-col gap-4">
           <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
             <button
               onClick={() => {
@@ -767,6 +883,13 @@ const ReportDisplay: React.FC<ReportDisplayProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Report ID at Bottom */}
+      {request_id && (
+        <div className="flex justify-center">
+          <span className="text-xs font-mono bg-gray-100 px-2 py-1 rounded text-gray-600">Report ID: {request_id}</span>
+        </div>
+      )}
     </div>
   );
 };

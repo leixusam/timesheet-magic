@@ -162,6 +162,7 @@ def get_gemini_response_with_function_calling(
     while current_retry <= max_retries:
         try:
             print(f"[DEBUG] Starting API call attempt {current_retry + 1}/{max_retries + 1}")
+            print(f"[INFO] Using Gemini model: {model_to_use_str} (API path: {model_path_for_api})")
             
             # Use client.models.generate_content instead of genai.GenerativeModel
             # Tools need to be passed through config parameter
@@ -239,8 +240,23 @@ def get_gemini_response_with_function_calling(
             if response.candidates:
                 candidate = response.candidates[0]
                 print(f"[DEBUG] Candidate finish_reason: {candidate.finish_reason}")
+                
+                # Check specifically for MALFORMED_FUNCTION_CALL
+                if hasattr(candidate.finish_reason, 'name'):
+                    finish_reason_name = candidate.finish_reason.name
+                else:
+                    finish_reason_name = str(candidate.finish_reason)
+                
+                print(f"[DEBUG] Finish reason name: {finish_reason_name}")
+                
+                # Handle MALFORMED_FUNCTION_CALL specifically
+                if "MALFORMED_FUNCTION_CALL" in finish_reason_name:
+                    print(f"[DEBUG] Detected MALFORMED_FUNCTION_CALL - data too complex")
+                    return "Error: MALFORMED_FUNCTION_CALL - The input data is too complex for the AI model to process reliably. Please try with a smaller or simpler file."
+                
+                # Handle other non-success finish reasons
                 if candidate.finish_reason not in [genai_types.Candidate.FinishReason.STOP, genai_types.Candidate.FinishReason.MAX_TOKENS]:
-                    detailed_error_msg = f"Error: LLM response was empty or incomplete. Finish Reason: {candidate.finish_reason.name}."
+                    detailed_error_msg = f"Error: LLM response was empty or incomplete. Finish Reason: {finish_reason_name}."
                     if candidate.safety_ratings:
                          detailed_error_msg += f" Safety Ratings: {[(sr.category.name, sr.probability.name) for sr in candidate.safety_ratings]}."
                     print(f"[DEBUG] Candidate error: {detailed_error_msg}")

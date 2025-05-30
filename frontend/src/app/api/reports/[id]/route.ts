@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:8000';
+
 interface RouteParams {
   params: Promise<{ id: string }>;
 }
@@ -9,26 +11,58 @@ export async function GET(
   { params }: RouteParams
 ) {
   try {
-    const { id } = await params;
-    const backendUrl = process.env.BACKEND_URL || 'https://timesheet-magic-backend.fly.dev';
-    const response = await fetch(`${backendUrl}/api/reports/${id}`);
-    
-    if (!response.ok) {
-      if (response.status === 404) {
+    const { id: reportId } = await params;
+
+    if (!reportId) {
+      return NextResponse.json(
+        { error: 'Report ID is required' },
+        { status: 400 }
+      );
+    }
+
+    // Forward the request to the FastAPI backend
+    const backendResponse = await fetch(`${BACKEND_URL}/api/reports/${reportId}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!backendResponse.ok) {
+      if (backendResponse.status === 404) {
         return NextResponse.json(
           { error: 'Report not found' },
           { status: 404 }
         );
       }
-      throw new Error(`Backend responded with ${response.status}`);
+      
+      const errorData = await backendResponse.json().catch(() => ({
+        message: 'Backend error'
+      }));
+      
+      return NextResponse.json(
+        { 
+          error: errorData.message || `Backend error: ${backendResponse.status}`,
+          details: errorData
+        },
+        { status: backendResponse.status || 500 }
+      );
     }
-    
-    const data = await response.json();
-    return NextResponse.json(data);
+
+    // Get the report from the backend
+    const report = await backendResponse.json();
+
+    // Return the report to the frontend
+    return NextResponse.json(report);
+
   } catch (error) {
-    console.error('Error fetching report:', error);
+    console.error('Get report API route error:', error);
+    
     return NextResponse.json(
-      { error: 'Failed to fetch report' },
+      { 
+        error: 'Internal server error while fetching report',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      },
       { status: 500 }
     );
   }
@@ -39,9 +73,16 @@ export async function DELETE(
   { params }: RouteParams
 ) {
   try {
-    const { id } = await params;
-    const backendUrl = process.env.BACKEND_URL || 'https://timesheet-magic-backend.fly.dev';
-    const response = await fetch(`${backendUrl}/api/reports/${id}`, {
+    const { id: reportId } = await params;
+    
+    if (!reportId) {
+      return NextResponse.json(
+        { error: 'Report ID is required' },
+        { status: 400 }
+      );
+    }
+
+    const response = await fetch(`${BACKEND_URL}/api/reports/${reportId}`, {
       method: 'DELETE',
     });
     
@@ -52,7 +93,18 @@ export async function DELETE(
           { status: 404 }
         );
       }
-      throw new Error(`Backend responded with ${response.status}`);
+      
+      const errorData = await response.json().catch(() => ({
+        message: 'Backend error'
+      }));
+      
+      return NextResponse.json(
+        { 
+          error: errorData.message || `Backend error: ${response.status}`,
+          details: errorData
+        },
+        { status: response.status || 500 }
+      );
     }
     
     const data = await response.json();
@@ -60,8 +112,23 @@ export async function DELETE(
   } catch (error) {
     console.error('Error deleting report:', error);
     return NextResponse.json(
-      { error: 'Failed to delete report' },
+      { 
+        error: 'Internal server error while deleting report',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      },
       { status: 500 }
     );
   }
+}
+
+// Handle OPTIONS for CORS if needed
+export async function OPTIONS(_request: NextRequest) {
+  return new NextResponse(null, {
+    status: 200,
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, DELETE, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type',
+    },
+  });
 } 

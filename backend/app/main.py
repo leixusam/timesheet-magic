@@ -1,3 +1,20 @@
+import os
+from dotenv import load_dotenv
+
+# Load environment variables FIRST - before any other imports that might depend on them
+BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DOTENV_LOCAL_PATH = os.path.join(BACKEND_DIR, '.env.local')
+DOTENV_ROOT_PATH = os.path.join(os.path.dirname(BACKEND_DIR), '.env')
+
+# Try to load .env.local first (for local development), then fallback to .env
+if os.path.exists(DOTENV_LOCAL_PATH):
+    print(f"Loading local environment from: {DOTENV_LOCAL_PATH}")
+    load_dotenv(DOTENV_LOCAL_PATH)
+else:
+    print(f"Loading environment from: {DOTENV_ROOT_PATH}")
+    load_dotenv(DOTENV_ROOT_PATH)
+
+# Now import everything else
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.endpoints.analysis import router as analysis_router

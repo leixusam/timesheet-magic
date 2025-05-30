@@ -57,9 +57,9 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2">
               <Filter className="h-4 w-4 text-gray-500" />
-              <h3 className="text-sm font-medium text-gray-900">
+              <span className="text-sm font-normal text-gray-600">
                 Filters
-              </h3>
+              </span>
             </div>
             
             {hasActiveFilters && (

@@ -1,8 +1,7 @@
-'use client';
-
-import React, { useState, useEffect } from 'react';
-import { useParams, useRouter } from 'next/navigation';
-import ReportDisplay from '@/components/ReportDisplay';
+import React from 'react';
+import { notFound } from 'next/navigation';
+import { Metadata } from 'next';
+import ReportPageClient from './ReportPageClient';
 
 // Define the type inline based on the analysis report structure
 interface FinalAnalysisReport {
@@ -19,127 +18,154 @@ interface FinalAnalysisReport {
   overall_report_summary_text?: string;
 }
 
-export default function ReportViewPage() {
-  const params = useParams();
-  const router = useRouter();
-  const reportId = params.id as string;
+interface ReportPageProps {
+  params: Promise<{ id: string }>;
+}
+
+async function getReport(reportId: string): Promise<FinalAnalysisReport | null> {
+  try {
+    // Call the backend API directly from server component
+    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
+    const response = await fetch(`${backendUrl}/api/reports/${reportId}`, {
+      // Add cache control for better performance
+      next: { revalidate: 300 }, // Revalidate every 5 minutes
+      headers: {
+        'Accept': 'application/json',
+      },
+    });
+    
+    if (response.status === 404) {
+      return null;
+    }
+    
+    if (!response.ok) {
+      throw new Error(`Failed to fetch report: ${response.status}`);
+    }
+    
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error('Error fetching report server-side:', error);
+    throw error;
+  }
+}
+
+export async function generateMetadata({ params }: ReportPageProps): Promise<Metadata> {
+  const { id: reportId } = await params;
   
-  const [report, setReport] = useState<FinalAnalysisReport | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (reportId) {
-      fetchReport();
+  try {
+    const report = await getReport(reportId);
+    
+    if (!report) {
+      return {
+        title: 'Report Not Found | ShiftIQ',
+        description: 'The requested compliance report could not be found.',
+        robots: 'noindex, nofollow',
+      };
     }
-  }, [reportId]);
-
-  const fetchReport = async () => {
-    try {
-      setLoading(true);
-      const response = await fetch(`/api/reports/${reportId}`);
-      
-      if (response.ok) {
-        const data = await response.json();
-        setReport(data);
-      } else if (response.status === 404) {
-        setError('Report not found');
-      } else {
-        setError('Failed to load report');
-      }
-    } catch (err) {
-      setError('Failed to load report');
-      console.error('Error fetching report:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleNewAnalysis = () => {
-    router.push('/demo');
-  };
-
-  const handleDeleteReport = () => {
-    // Navigate back to reports list after deletion
-    router.push('/reports');
-  };
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-          <p className="mt-2 text-gray-600">Loading report...</p>
-        </div>
-      </div>
-    );
+    
+    // Generate metadata based on report data
+    const filename = report.original_filename || 'Timesheet';
+    const violations = report.all_identified_violations?.length || 0;
+    const employees = report.employee_summaries?.length || 0;
+    const isInProgress = report.status === 'processing' || report.status === 'analyzing';
+    
+    const title = isInProgress 
+      ? `Analyzing ${filename} | ShiftIQ`
+      : `${filename} Compliance Report | ShiftIQ`;
+    
+    const description = isInProgress
+      ? `Your timesheet analysis for ${filename} is currently in progress. View the live status and get results as soon as they're ready.`
+      : violations > 0
+        ? `Compliance report for ${filename}: Found ${violations} violation${violations !== 1 ? 's' : ''} across ${employees} employee${employees !== 1 ? 's' : ''}. View detailed analysis and cost impact.`
+        : `Compliance report for ${filename}: No violations found across ${employees} employee${employees !== 1 ? 's' : ''}. View complete analysis results.`;
+    
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+    const url = `${baseUrl}/reports/${reportId}`;
+    
+    return {
+      title,
+      description,
+      openGraph: {
+        title,
+        description,
+        url,
+        siteName: 'ShiftIQ',
+        type: 'article',
+        images: [
+          {
+            url: '/og-image.png',
+            width: 1200,
+            height: 630,
+            alt: 'ShiftIQ Logo',
+          },
+        ],
+      },
+      twitter: {
+        card: 'summary_large_image',
+        title,
+        description,
+        images: ['/og-image.png'],
+        creator: '@timesheetmagic',
+      },
+      alternates: {
+        canonical: url,
+      },
+      robots: isInProgress ? 'noindex, follow' : 'index, follow',
+      keywords: [
+        'timesheet analysis',
+        'labor compliance',
+        'overtime violations',
+        'wage compliance',
+        'employment law',
+        'payroll audit',
+        'break compliance',
+        filename.toLowerCase(),
+      ],
+      authors: [{ name: 'ShiftIQ' }],
+      creator: 'ShiftIQ',
+      publisher: 'ShiftIQ',
+      other: {
+        'report-id': reportId,
+        'report-status': report.status,
+        'violations-count': violations.toString(),
+        'employees-count': employees.toString(),
+        'article:author': 'ShiftIQ',
+        'article:section': 'Labor Compliance',
+        'article:tag': 'timesheet analysis, labor compliance, audit report',
+      },
+    };
+  } catch (error) {
+    console.error('Error generating metadata:', error);
+    return {
+      title: 'Timesheet Analysis Report | ShiftIQ',
+      description: 'View your timesheet compliance analysis report with detailed violation detection and cost impact.',
+      robots: 'noindex, follow',
+    };
   }
+}
 
+export default async function ReportPage({ params }: ReportPageProps) {
+  const { id: reportId } = await params;
+  
+  let report: FinalAnalysisReport | null = null;
+  let error: string | null = null;
+  
+  try {
+    report = await getReport(reportId);
+    
+    if (!report) {
+      notFound();
+    }
+  } catch (err) {
+    console.error('Server-side error fetching report:', err);
+    error = 'Failed to load report';
+  }
+  
+  // If there's an error, we'll pass it to the client component to handle
   if (error) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="max-w-md mx-auto">
-            <svg className="w-16 h-16 mx-auto text-red-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            <h3 className="text-lg font-medium text-gray-900 mb-2">Report Not Found</h3>
-            <p className="text-gray-600 mb-6">{error}</p>
-            <div className="flex gap-4 justify-center">
-              <button
-                onClick={fetchReport}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-              >
-                Retry
-              </button>
-              <button
-                onClick={() => router.push('/reports')}
-                className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
-              >
-                Back to Reports
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
+    return <ReportPageClient reportId={reportId} initialError={error} />;
   }
-
-  if (!report) {
-    return null;
-  }
-
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50">
-      {/* Navigation Header */}
-      <div className="bg-white border-b border-gray-200 shadow-sm">
-        <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <button
-              onClick={() => router.push('/reports')}
-              className="inline-flex items-center gap-2 text-gray-600 hover:text-gray-900 transition-colors"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-              </svg>
-              Back to Reports
-            </button>
-            
-            <div className="text-sm text-gray-500">
-              Report ID: {reportId}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Report Content */}
-      <div className="py-8">
-        <ReportDisplay
-          analysisReport={report}
-          onNewAnalysis={handleNewAnalysis}
-          onDeleteReport={handleDeleteReport}
-        />
-      </div>
-    </div>
-  );
+  
+  return <ReportPageClient reportId={reportId} initialReport={report} />;
 } 

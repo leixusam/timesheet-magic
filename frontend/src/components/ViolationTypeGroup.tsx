@@ -105,9 +105,9 @@ export const ViolationTypeGroup: React.FC<ViolationTypeGroupProps> = ({
         variant: getTypeVariant(violationType),
         isDefaultOpen: !defaultCollapsed,
         children: (
-          <div className="space-y-3">
+          <div className="space-y-2">
             {/* Type Summary */}
-            <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 mb-4">
+            <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 mb-2">
               <h4 className="text-sm font-medium text-gray-900 mb-2">Summary</h4>
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
@@ -144,7 +144,7 @@ export const ViolationTypeGroup: React.FC<ViolationTypeGroupProps> = ({
                 violation={violation}
                 showEmployee={true}
                 showDate={true}
-                isCompact={false}
+                isCompact={true}
                 searchTerm={searchTerm}
               />
             ))}

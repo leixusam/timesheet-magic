@@ -1,4 +1,4 @@
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends, Response
 from pydantic import BaseModel, EmailStr, ValidationError
 from typing import Optional
 from sqlalchemy.orm import Session
@@ -7,6 +7,10 @@ import uuid
 import os
 import time
 from datetime import datetime
+import asyncio
+import threading
+from uuid import UUID
+from fastapi import status
 
 # Import our core processing modules
 from app.core.llm_processing import parse_file_to_structured_data
@@ -18,8 +22,12 @@ from app.core.reporting import (
     generate_employee_summary_table_data,
     get_all_violation_types_with_advice
 )
-from app.models.schemas import LeadCaptureData, FinalAnalysisReport
+from app.models.schemas import (
+    LeadCaptureData, 
+    FinalAnalysisReport
+)
 from app.db import get_db, SavedReport, Lead
+from app.db import repositories
 from app.db.supabase_client import log_lead_to_supabase, log_analysis_to_supabase
 from app.core.logging_config import (
     get_logger, 
@@ -40,7 +48,9 @@ from app.core.error_handlers import (
     ComplianceAnalysisError,
     DatabaseError,
     validate_file_upload,
-    map_core_exceptions
+    map_core_exceptions,
+    ErrorCategory,
+    ErrorSeverity
 )
 
 # Initialize logger for this module
@@ -67,19 +77,19 @@ class LeadSubmissionRequest(BaseModel):
 async def submit_lead_data(lead_request: LeadSubmissionRequest, db: Session = Depends(get_db)):
     """
     Submit lead capture data to be stored in the database.
-    This endpoint receives lead information after file analysis is complete.
+    This endpoint can now receive lead information immediately after file upload,
+    even before analysis is complete.
     """
     lead_logger = get_logger("analysis", {"request_id": lead_request.analysis_id})
     
     try:
         lead_logger.info(f"Lead submission started for manager: {lead_request.manager_name}")
         
-        # Verify the analysis_id exists in saved reports
+        # Check if analysis_id exists in saved reports
         saved_report = db.query(SavedReport).filter(SavedReport.id == lead_request.analysis_id).first()
         
         if not saved_report:
             lead_logger.warning(f"Analysis report not found for ID: {lead_request.analysis_id}")
-            # Use standardized error handling (task 5.3)
             error = TimesheetAnalysisError(
                 message="Analysis report not found for the provided ID",
                 code="ANALYSIS_NOT_FOUND",
@@ -96,6 +106,7 @@ async def submit_lead_data(lead_request: LeadSubmissionRequest, db: Session = De
         saved_report.manager_phone = lead_request.phone
         saved_report.store_name = lead_request.store_name
         saved_report.store_address = lead_request.store_address
+        db.commit()
         
         # Create lead record
         lead_id = str(uuid.uuid4())
@@ -175,6 +186,288 @@ async def submit_lead_data(lead_request: LeadSubmissionRequest, db: Session = De
                 operation="lead_submission"
             )
             raise ErrorHandler.create_http_exception(db_error, lead_request.analysis_id)
+
+async def _run_analysis_in_background(
+    file_bytes: bytes,
+    request_id: str,
+    filename: str,
+    content_type: str,
+    file_size: int,
+    db_session: Session
+):
+    """
+    Run the actual analysis in a background task.
+    This would typically be handled by a task queue in production.
+    """
+    # Create a new database session for the background task
+    from app.db import SessionLocal
+    db = SessionLocal()
+    
+    try:
+        request_logger = get_logger("analysis", {"request_id": request_id})
+        request_logger.info(f"Starting background analysis for request {request_id}")
+        
+        # Use the existing analyze logic here
+        # This is essentially the same as the analyze_timesheet function
+        # but working with the existing placeholder record
+        
+        # Determine debug directory (optional)
+        debug_dir = os.getenv("DEBUG_DIR")
+        if debug_dir:
+            debug_dir = os.path.join(debug_dir, f"analysis_{request_id}")
+        
+        # Step 1: Parse file to structured data using LLM
+        parsing_start_time = time.time()
+        try:
+            llm_output = await parse_file_to_structured_data(
+                file_bytes=file_bytes,
+                mime_type=content_type or f"application/{filename.split('.')[-1].lower()}",
+                original_filename=filename,
+                debug_dir=debug_dir
+            )
+            
+            parsing_end_time = time.time()
+            parsing_duration = parsing_end_time - parsing_start_time
+            
+            events_found = len(llm_output.punch_events) if llm_output.punch_events else 0
+            parsing_success = events_found > 0
+            
+            # Log parsing result
+            log_parsing_result(
+                request_logger, request_id, filename, parsing_success,
+                events_found, parsing_duration, llm_output.parsing_issues
+            )
+            
+            if not llm_output.punch_events:
+                request_logger.error("No punch events found in file")
+                # Update the placeholder report with error status
+                placeholder_report = db.query(SavedReport).filter(SavedReport.id == request_id).first()
+                if placeholder_report:
+                    placeholder_report.report_data = json.dumps({
+                        "request_id": request_id,
+                        "original_filename": filename,
+                        "status": "error_parsing_failed",
+                        "status_message": "No punch events could be extracted from the file",
+                        "error": "No punch events found in file"
+                    })
+                    db.commit()
+                return
+        
+        except Exception as e:
+            request_logger.error(f"LLM parsing failed: {str(e)}")
+            # Update the placeholder report with error status
+            placeholder_report = db.query(SavedReport).filter(SavedReport.id == request_id).first()
+            if placeholder_report:
+                placeholder_report.report_data = json.dumps({
+                    "request_id": request_id,
+                    "original_filename": filename,
+                    "status": "error_parsing_failed",
+                    "status_message": f"Failed to parse file: {str(e)}",
+                    "error": str(e)
+                })
+                db.commit()
+            return
+        
+        # Step 2: Detect duplicate employees and get warnings
+        duplicate_groups = detect_duplicate_employees(llm_output.punch_events)
+        duplicate_warnings = []
+        if duplicate_groups:
+            for canonical_name, variations in duplicate_groups.items():
+                if len(variations) > 1:
+                    warning_msg = f"Potential duplicate employee '{canonical_name}' found with variations: {', '.join(variations)}"
+                    duplicate_warnings.append(warning_msg)
+        
+        # Step 3: Run compliance analysis with cost calculations
+        compliance_start_time = time.time()
+        try:
+            # Generate KPI data
+            kpis = calculate_kpi_tiles_data(llm_output.punch_events)
+            
+            # Generate staffing density heatmap
+            heatmap_data = generate_staffing_density_heatmap_data(llm_output.punch_events)
+            
+            # Compile all violations
+            all_violations = compile_general_compliance_violations(llm_output.punch_events)
+            
+            # Generate employee summaries
+            employee_summaries = generate_employee_summary_table_data(llm_output.punch_events)
+            
+            compliance_end_time = time.time()
+            compliance_duration = compliance_end_time - compliance_start_time
+            
+            # Log compliance analysis results
+            log_compliance_analysis(
+                request_logger, request_id, len(all_violations),
+                len(employee_summaries), compliance_duration
+            )
+            
+            # Generate overall summary text
+            overall_summary = _generate_overall_report_summary(
+                kpis=kpis,
+                total_violations=len(all_violations),
+                employee_count=len(employee_summaries),
+                duplicate_warnings=duplicate_warnings
+            )
+            
+            # Determine status
+            status = "success"
+            status_message = None
+            
+            if llm_output.parsing_issues or duplicate_warnings:
+                status = "partial_success_with_warnings"
+                status_message = "Analysis completed with some warnings. Please review parsing issues and duplicate name warnings."
+            
+            # Create final report
+            report = FinalAnalysisReport(
+                request_id=request_id,
+                original_filename=filename,
+                status=status,
+                status_message=status_message,
+                kpis=kpis,
+                staffing_density_heatmap=heatmap_data,
+                all_identified_violations=all_violations,
+                employee_summaries=employee_summaries,
+                duplicate_name_warnings=duplicate_warnings,
+                parsing_issues_summary=llm_output.parsing_issues or [],
+                overall_report_summary_text=overall_summary
+            )
+            
+            # Update the placeholder report with actual analysis data
+            placeholder_report = db.query(SavedReport).filter(SavedReport.id == request_id).first()
+            if placeholder_report:
+                employee_count = len(employee_summaries) if employee_summaries else 0
+                total_violations = len(all_violations) if all_violations else 0
+                total_hours = kpis.total_scheduled_labor_hours if kpis else 0
+                overtime_cost = kpis.estimated_overtime_cost if kpis else 0
+                
+                placeholder_report.report_data = report.model_dump_json()
+                placeholder_report.employee_count = employee_count
+                placeholder_report.total_violations = total_violations
+                placeholder_report.total_hours = total_hours
+                placeholder_report.overtime_cost = overtime_cost
+                
+                db.commit()
+                
+                request_logger.info(f"Background analysis completed successfully for request {request_id}")
+            
+        except Exception as e:
+            request_logger.error(f"Compliance analysis failed: {str(e)}")
+            # Update the placeholder report with error status
+            placeholder_report = db.query(SavedReport).filter(SavedReport.id == request_id).first()
+            if placeholder_report:
+                placeholder_report.report_data = json.dumps({
+                    "request_id": request_id,
+                    "original_filename": filename,
+                    "status": "error_analysis_failed",
+                    "status_message": f"Failed to complete compliance analysis: {str(e)}",
+                    "error": str(e)
+                })
+                db.commit()
+            
+    except Exception as e:
+        request_logger.error(f"Background analysis failed with unexpected error: {str(e)}")
+    finally:
+        db.close()
+
+@router.post("/start-analysis")
+async def start_analysis(file: UploadFile = File(...), db: Session = Depends(get_db)):
+    """
+    Start timesheet analysis and return request ID immediately.
+    The actual analysis continues in the background.
+    """
+    # Generate unique request ID
+    request_id = str(uuid.uuid4())
+    request_logger = get_logger("analysis", {"request_id": request_id})
+    
+    # Get file information
+    content_type = file.content_type
+    filename = file.filename or "unknown_file"
+    file_extension = filename.split(".")[-1].lower() if "." in filename else None
+    
+    # Read file bytes first to get size
+    try:
+        file_bytes = await file.read()
+        file_size = len(file_bytes)
+    except Exception as e:
+        request_logger.error(f"Failed to read uploaded file: {str(e)}")
+        file_error = FileValidationError(
+            message="Failed to read uploaded file",
+            filename=filename
+        )
+        raise ErrorHandler.create_http_exception(file_error, request_id)
+    
+    # Validate file using new error handling system
+    try:
+        validate_file_upload(file_bytes, filename, content_type)
+    except (FileValidationError, FileSizeError) as e:
+        request_logger.warning(f"File validation failed: {e.message}")
+        raise ErrorHandler.create_http_exception(e, request_id)
+    
+    # Log analysis start
+    log_analysis_start(
+        request_logger, request_id, filename, file_size, 
+        content_type or "unknown", file_extension
+    )
+    
+    # Create a placeholder SavedReport immediately
+    try:
+        placeholder_report = SavedReport(
+            id=request_id,
+            original_filename=filename,
+            report_data="{}",  # Empty JSON, will be updated when analysis completes
+            file_size=file_size,
+            file_type=content_type or file_extension,
+            employee_count=0,  # Will be updated
+            total_violations=0,  # Will be updated
+            total_hours=0.0,  # Will be updated
+            overtime_cost=0.0  # Will be updated
+        )
+        
+        db.add(placeholder_report)
+        db.commit()
+        
+        request_logger.info(f"Placeholder report created for immediate lead submission | ID: {request_id}")
+        log_database_operation(
+            request_logger, "INSERT", "saved_reports", True, request_id
+        )
+        
+    except Exception as e:
+        request_logger.error(f"Failed to create placeholder report: {str(e)}")
+        db.rollback()
+        db_error = DatabaseError(
+            message=f"Failed to create analysis record: {str(e)}",
+            operation="create_placeholder"
+        )
+        raise ErrorHandler.create_http_exception(db_error, request_id)
+    
+    # Start the analysis in the background
+    # Note: In a production system, you'd want to use Celery or similar for background tasks
+    def run_background_analysis():
+        # Add a small delay to ensure the main transaction is committed
+        time.sleep(0.1)
+        
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            loop.run_until_complete(_run_analysis_in_background(
+                file_bytes, request_id, filename, content_type, file_size, db
+            ))
+        finally:
+            loop.close()
+    
+    # Start the background thread
+    analysis_thread = threading.Thread(target=run_background_analysis)
+    analysis_thread.daemon = True  # Dies when main thread dies
+    analysis_thread.start()
+    
+    # Return the request ID immediately so lead submission can happen
+    return {
+        "success": True,
+        "request_id": request_id,
+        "message": "Analysis started successfully",
+        "filename": filename,
+        "status": "processing"
+    }
 
 @router.post("/analyze")
 async def analyze_timesheet(file: UploadFile = File(...), db: Session = Depends(get_db)):
@@ -386,24 +679,47 @@ async def analyze_timesheet(file: UploadFile = File(...), db: Session = Depends(
                 total_hours = kpis.total_scheduled_labor_hours if kpis else 0
                 overtime_cost = kpis.estimated_overtime_cost if kpis else 0
                 
-                saved_report = SavedReport(
-                    id=request_id,
-                    original_filename=filename,
-                    report_data=report.model_dump_json(),
-                    file_size=file_size,
-                    file_type=content_type or file_extension,
-                    employee_count=employee_count,
-                    total_violations=total_violations,
-                    total_hours=total_hours,
-                    overtime_cost=overtime_cost
-                )
+                # Check if a placeholder SavedReport already exists (from lead submission)
+                existing_report = db.query(SavedReport).filter(SavedReport.id == request_id).first()
+                is_update_operation = existing_report is not None
                 
-                db.add(saved_report)
-                db.commit()
-                
-                log_database_operation(
-                    request_logger, "INSERT", "saved_reports", True, request_id
-                )
+                if existing_report:
+                    # Update the existing placeholder report with actual analysis data
+                    request_logger.info(f"Updating existing placeholder report for ID: {request_id}")
+                    existing_report.original_filename = filename
+                    existing_report.report_data = report.model_dump_json()
+                    existing_report.file_size = file_size
+                    existing_report.file_type = content_type or file_extension
+                    existing_report.employee_count = employee_count
+                    existing_report.total_violations = total_violations
+                    existing_report.total_hours = total_hours
+                    existing_report.overtime_cost = overtime_cost
+                    
+                    db.commit()
+                    
+                    log_database_operation(
+                        request_logger, "UPDATE", "saved_reports", True, request_id
+                    )
+                else:
+                    # Create a new SavedReport (normal case when no lead was submitted first)
+                    saved_report = SavedReport(
+                        id=request_id,
+                        original_filename=filename,
+                        report_data=report.model_dump_json(),
+                        file_size=file_size,
+                        file_type=content_type or file_extension,
+                        employee_count=employee_count,
+                        total_violations=total_violations,
+                        total_hours=total_hours,
+                        overtime_cost=overtime_cost
+                    )
+                    
+                    db.add(saved_report)
+                    db.commit()
+                    
+                    log_database_operation(
+                        request_logger, "INSERT", "saved_reports", True, request_id
+                    )
                 
                 # Log analysis metadata to Supabase (task 5.2.2)
                 total_duration = time.time() - analysis_start_time
@@ -428,7 +744,7 @@ async def analyze_timesheet(file: UploadFile = File(...), db: Session = Depends(
             except Exception as save_error:
                 request_logger.warning(f"Failed to save report to database: {save_error}")
                 log_database_operation(
-                    request_logger, "INSERT", "saved_reports", False, request_id, str(save_error)
+                    request_logger, "UPDATE" if is_update_operation else "INSERT", "saved_reports", False, request_id, str(save_error)
                 )
                 # Log database error but continue - don't fail the analysis if saving fails
                 # The analysis was successful, we just couldn't save it
@@ -547,6 +863,133 @@ def _generate_overall_report_summary(
         summary_parts.append("Continue monitoring timesheet compliance and consider implementing automated compliance checks.")
     
     return " ".join(summary_parts)
+
+@router.get("/reports/{request_id}", 
+            response_model=FinalAnalysisReport, 
+            summary="Get Analysis Report by ID",
+            description="Retrieve the full analysis report for a given request ID, including compliance results and punch event data.",
+            responses={
+                200: {"description": "Report found"},
+                404: {"description": "Report not found"},
+                500: {"description": "Internal server error"}
+            }
+)
+async def get_report(request_id: UUID, db: Session = Depends(get_db)) -> FinalAnalysisReport:
+    report_logger = get_logger("analysis", {"request_id": str(request_id)})
+    report_logger.debug(f"Attempting to retrieve report with ID: {request_id}")
+
+    # Add debug info about the database state
+    total_reports = db.query(SavedReport).count()
+    report_logger.debug(f"Total reports in database: {total_reports}")
+    
+    # Try to find the report with more detailed logging
+    db_report = repositories.get_report(db, request_id)
+    
+    if db_report:
+        report_logger.debug(f"Found report: ID={db_report.id}, filename={db_report.original_filename}")
+    else:
+        # Try alternative query to see if it's a UUID issue
+        report_by_string = db.query(SavedReport).filter(SavedReport.id == str(request_id)).first()
+        if report_by_string:
+            report_logger.debug(f"Found report using string ID: {report_by_string.id}")
+            db_report = report_by_string
+        else:
+            report_logger.warning(f"Report definitely not found: {request_id}")
+
+    if not db_report:
+        report_logger.warning(f"Report not found: {request_id}")
+        error = TimesheetAnalysisError(
+            message=f"Report with ID '{request_id}' not found.",
+            code="REPORT_NOT_FOUND",
+            category=ErrorCategory.NOT_FOUND,
+            severity=ErrorSeverity.LOW,
+            http_status=404
+        )
+        raise ErrorHandler.create_http_exception(error, str(request_id))
+
+    try:
+        if db_report.report_data and db_report.report_data.strip() and db_report.report_data != "{}":
+            report_content_data = json.loads(db_report.report_data)
+            
+            # Ensure required fields for FinalAnalysisReport are present or defaulted
+            if 'request_id' not in report_content_data:
+                report_content_data['request_id'] = str(db_report.id)
+            if 'original_filename' not in report_content_data:
+                report_content_data['original_filename'] = db_report.original_filename or "Unknown"
+            if 'status' not in report_content_data:
+                 report_content_data['status'] = "success"  # Default status
+
+            # Validate and construct FinalAnalysisReport
+            final_report_model = FinalAnalysisReport(**report_content_data)
+
+        else:
+            # Handle cases where report_data is empty or "{}", typically for "processing" or "pending" states
+            report_logger.info(f"Report {request_id} has no detailed data, likely processing.")
+            final_report_model = FinalAnalysisReport(
+                request_id=str(db_report.id),
+                original_filename=db_report.original_filename or "Unknown",
+                status="processing",
+                status_message="Report is currently being processed or has no detailed data.",
+                # Initialize other fields as empty or default as per FinalAnalysisReport schema
+                kpis=None,
+                staffing_density_heatmap=[],
+                all_identified_violations=[],
+                employee_summaries=[],
+                duplicate_name_warnings=[],
+                parsing_issues_summary=[],
+                overall_report_summary_text=None
+            )
+        
+        report_logger.info(f"Report {request_id} retrieved successfully with status: {final_report_model.status}")
+        return final_report_model
+
+    except json.JSONDecodeError as e:
+        report_logger.error(f"Failed to parse report_data JSON for report {request_id}: {str(e)}")
+        # Fallback to a generic error structure if JSON is corrupted
+        final_report_model = FinalAnalysisReport(
+            request_id=str(db_report.id),
+            original_filename=db_report.original_filename or "Unknown",
+            status="error_unknown",
+            status_message="Failed to load report details due to corrupted data.",
+            kpis=None, staffing_density_heatmap=[], all_identified_violations=[],
+            employee_summaries=[], duplicate_name_warnings=[], parsing_issues_summary=[]
+        )
+        return final_report_model
+
+    except ValidationError as e:
+        report_logger.error(f"Pydantic validation error for report {request_id} data: {str(e)}")
+        # This indicates that the stored report_data (even if valid JSON) does not match FinalAnalysisReport schema
+        error = TimesheetAnalysisError(
+            message=f"Report data for ID '{request_id}' is malformed or outdated.",
+            code="REPORT_DATA_INVALID",
+            category=ErrorCategory.INTERNAL,
+            severity=ErrorSeverity.HIGH,
+            http_status=500,
+            debug_info={"validation_errors": e.errors()}
+        )
+        raise ErrorHandler.create_http_exception(error, str(request_id))
+    except Exception as e:
+        report_logger.error(f"Unexpected error retrieving report {request_id}: {str(e)}")
+        raise ErrorHandler.handle_unexpected_error(e, f"get_report {request_id}", str(request_id))
+
+@router.delete("/reports/{request_id}", 
+            status_code=status.HTTP_204_NO_CONTENT, 
+            summary="Delete Analysis Report by ID",
+            description="Permanently delete an analysis report and all associated data (including uploaded file if stored) for a given request ID.",
+            responses={
+                204: {"description": "Report deleted successfully"},
+                404: {"description": "Report not found"},
+                500: {"description": "Internal server error"}
+            }
+)
+async def delete_report(request_id: UUID, db: Session = Depends(get_db)):
+    logger.info(f"Attempting to delete report with ID: {request_id}")
+    report_deleted = repositories.delete_report_and_associated_data(db, request_id)
+    if not report_deleted:
+        logger.warning(f"Report not found for deletion: {request_id}")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Report with ID '{request_id}' not found.")
+    logger.info(f"Report {request_id} and associated data deleted successfully.")
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 # Placeholder for later integration into main app
 # from fastapi import FastAPI

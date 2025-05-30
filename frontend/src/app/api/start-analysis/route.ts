@@ -56,8 +56,8 @@ export async function POST(request: NextRequest) {
     const backendFormData = new FormData();
     backendFormData.append('file', file);
 
-    // Forward the request to the FastAPI backend
-    const backendResponse = await fetch(`${BACKEND_URL}/api/analyze`, {
+    // Forward the request to the FastAPI backend start-analysis endpoint
+    const backendResponse = await fetch(`${BACKEND_URL}/api/start-analysis`, {
       method: 'POST',
       body: backendFormData,
       // Don't set Content-Type header - let fetch handle multipart/form-data
@@ -65,7 +65,7 @@ export async function POST(request: NextRequest) {
 
     if (!backendResponse.ok) {
       const errorData = await backendResponse.json().catch(() => ({
-        message: 'Backend analysis failed'
+        message: 'Backend analysis start failed'
       }));
       
       return NextResponse.json(
@@ -77,18 +77,27 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get the analysis result from the backend
-    const analysisResult = await backendResponse.json();
+    // Get the start analysis result from the backend
+    const startResult = await backendResponse.json();
 
-    // Return the analysis result to the frontend
-    return NextResponse.json(analysisResult);
+    // Convert snake_case response to camelCase for frontend compatibility
+    const frontendResponse = {
+      success: startResult.success,
+      requestId: startResult.request_id, // Convert snake_case to camelCase
+      message: startResult.message,
+      filename: startResult.filename,
+      status: startResult.status
+    };
+
+    // Return the result to the frontend
+    return NextResponse.json(frontendResponse);
 
   } catch (error) {
-    console.error('API route error:', error);
+    console.error('Start analysis API route error:', error);
     
     return NextResponse.json(
       { 
-        error: 'Internal server error during file analysis',
+        error: 'Internal server error during analysis start',
         details: error instanceof Error ? error.message : 'Unknown error'
       },
       { status: 500 }

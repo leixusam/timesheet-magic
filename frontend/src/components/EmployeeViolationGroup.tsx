@@ -58,26 +58,7 @@ export const EmployeeViolationGroup: React.FC<EmployeeViolationGroupProps> = ({
       variant: 'employee' as const,
       isDefaultOpen: !defaultCollapsed,
       children: (
-        <div className="space-y-3">
-          {/* Severity Summary */}
-          {(criticalCount > 0 || warningCount > 0) && (
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
-              <h4 className="text-sm font-medium text-blue-900 mb-2">Violation Summary</h4>
-              <div className="flex items-center space-x-4 text-sm">
-                {criticalCount > 0 && (
-                  <span className="text-red-700">
-                    <span className="font-medium">{criticalCount}</span> Critical (Break violations)
-                  </span>
-                )}
-                {warningCount > 0 && (
-                  <span className="text-orange-700">
-                    <span className="font-medium">{warningCount}</span> Warning (Overtime)
-                  </span>
-                )}
-              </div>
-            </div>
-          )}
-
+        <div className="space-y-2">
           {/* Violation Cards */}
           {sortedViolations.map((violation, index) => (
             <ViolationCard
@@ -85,7 +66,7 @@ export const EmployeeViolationGroup: React.FC<EmployeeViolationGroupProps> = ({
               violation={violation}
               showEmployee={false} // Don't show employee name since it's already in the group header
               showDate={true}
-              isCompact={false}
+              isCompact={true}
               searchTerm={searchTerm}
             />
           ))}

@@ -70,9 +70,9 @@ const AccordionItem: React.FC<{
       >
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
-            <h3 className={`font-medium ${styles.headerText}`}>
+            <span className={`text-sm font-normal ${styles.headerText}`}>
               {item.title}
-            </h3>
+            </span>
             {item.count !== undefined && (
               <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${styles.countBadge}`}>
                 {item.count}

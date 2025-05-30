@@ -1,6 +1,6 @@
 'use client';
 
-import { LeadData } from '@/components/UploadForm';
+import { LeadData } from '@/types/leadCapture';
 import { useMapsLibrary } from '@vis.gl/react-google-maps';
 import { useEffect, useRef, useState } from 'react';
 

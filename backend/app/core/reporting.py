@@ -457,13 +457,14 @@ def compile_general_compliance_violations(punch_events: List[LLMParsedPunchEvent
     """
     try:
         # Get violations from the comprehensive compliance checking function
-        all_violations = get_all_compliance_violations(punch_events)
+        violations_data = get_all_compliance_violations(punch_events)
+        all_violations = violations_data["all_violations"]
         
         # Log compliance checking results
         logger.info(f"Compliance check completed | Violations found: {len(all_violations)}")
         
         if all_violations:
-            violation_types = Counter(v.violation_type for v in all_violations)
+            violation_types = Counter(v.rule_id for v in all_violations)
             logger.debug(f"Violation breakdown: {dict(violation_types)}")
         
         return all_violations

@@ -207,6 +207,28 @@ class ConfigurationError(TimesheetAnalysisError):
             **kwargs
         )
 
+class LLMProcessingError(TimesheetAnalysisError):
+    """Custom exception for errors during LLM processing after successful parsing."""
+    def __init__(self, message: str, original_filename: Optional[str] = None, suggestion: Optional[str] = None, llm_call_details: Optional[str] = None):
+        super().__init__(
+            message=message,
+            original_filename=original_filename,
+            suggestion=suggestion or "The AI model encountered an issue while analyzing the content. You can try uploading the file again. If the problem persists, the file content might be ambiguous or require adjustments.",
+            llm_call_details=llm_call_details,
+            status_code="error_llm_processing_failed"
+        )
+
+class LLMComplexityError(TimesheetAnalysisError):
+    """Custom exception for when LLM fails due to file complexity (e.g., MALFORMED_FUNCTION_CALL)."""
+    def __init__(self, message: str, original_filename: Optional[str] = None, suggestion: Optional[str] = None, llm_call_details: Optional[str] = None):
+        super().__init__(
+            message=message,
+            original_filename=original_filename,
+            suggestion=suggestion or "The file you uploaded appears to be too complex or large for our current automated analysis. Please try a simpler or smaller file, or use a standard timesheet format.",
+            llm_call_details=llm_call_details,
+            status_code="error_llm_complexity" # New status code
+        )
+
 class ErrorHandler:
     """Central error handling class for processing and responding to errors."""
     

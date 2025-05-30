@@ -191,15 +191,18 @@ async def test_parse_file_to_structured_data_unsupported_mime_type():
         await parse_file_to_structured_data(b"zip_content", "application/zip", "test.zip")
 
 @pytest.mark.asyncio
-async def test_parse_file_to_structured_data_excel_mime_type_raises_error():
-    """Tests that raw Excel MIME types raise a ValueError as direct parsing is not supported."""
+async def test_parse_file_to_structured_data_excel_mime_type_now_supported():
+    """Tests that Excel MIME types are now supported through preprocessing."""
     file_bytes = b"fake_excel_bytes"
     filename = "test.xlsx"
-    with pytest.raises(ValueError, match=f"Direct LLM schema extraction from raw Excel bytes .* for \'{filename}\' is not reliably supported"):
+    
+    # Since we don't have a real Excel file, this will fail at the openpyxl parsing stage
+    # But we expect a ParsingError now instead of FileValidationError
+    with pytest.raises(ParsingError, match="Failed to process Excel file"):
         await parse_file_to_structured_data(file_bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", filename)
 
     filename_xls = "test.xls"
-    with pytest.raises(ValueError, match=f"Direct LLM schema extraction from raw Excel bytes .* for \'{filename_xls}\' is not reliably supported"):
+    with pytest.raises(ParsingError, match="Failed to process Excel file"):
         await parse_file_to_structured_data(file_bytes, "application/vnd.ms-excel", filename_xls)
 
 @pytest.mark.asyncio

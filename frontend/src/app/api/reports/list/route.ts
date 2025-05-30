@@ -1,12 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+interface SavedReportSummary {
+  id: string;
+  original_filename: string;
+  manager_name?: string;
+  store_name?: string;
+  created_at: string;
+  employee_count?: number;
+  total_violations?: number;
+  total_hours?: number;
+  overtime_cost?: number;
+}
+
+const backendUrl = process.env.BACKEND_URL || 'http://localhost:8000';
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const skip = searchParams.get('skip') || '0';
     const limit = searchParams.get('limit') || '50';
     
-    const backendUrl = process.env.BACKEND_URL || 'https://timesheet-magic-backend.fly.dev';
     const response = await fetch(`${backendUrl}/api/reports/list?skip=${skip}&limit=${limit}`);
     
     if (!response.ok) {

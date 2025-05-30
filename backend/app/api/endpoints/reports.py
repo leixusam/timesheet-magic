@@ -116,7 +116,7 @@ async def list_reports(
             detail=f"Failed to retrieve reports: {str(e)}"
         )
 
-@router.get("/{report_id}", response_model=FinalAnalysisReport)
+@router.get("/{report_id}")
 async def get_report(
     report_id: str,
     db: Session = Depends(get_db)
@@ -133,15 +133,51 @@ async def get_report(
                 detail="Report not found"
             )
         
-        # Parse the JSON report data back to FinalAnalysisReport
-        report_data = json.loads(saved_report.report_data)
-        return FinalAnalysisReport(**report_data)
+        # Check if this is a placeholder report (still processing)
+        if saved_report.report_data == "{}":
+            return {
+                "status": "processing",
+                "message": "Analysis is still in progress",
+                "request_id": report_id,
+                "original_filename": saved_report.original_filename,
+                "created_at": saved_report.created_at.isoformat()
+            }
         
-    except json.JSONDecodeError:
-        raise HTTPException(
-            status_code=500,
-            detail="Corrupted report data"
-        )
+        # Try to parse the JSON report data back to FinalAnalysisReport
+        try:
+            report_data = json.loads(saved_report.report_data)
+            # Create the FinalAnalysisReport object
+            final_report = FinalAnalysisReport(**report_data)
+            
+            # Add manager information from the SavedReport table
+            report_dict = final_report.model_dump()
+            report_dict["manager_name"] = saved_report.manager_name
+            report_dict["manager_email"] = saved_report.manager_email
+            report_dict["manager_phone"] = saved_report.manager_phone
+            report_dict["store_name"] = saved_report.store_name
+            report_dict["store_address"] = saved_report.store_address
+            report_dict["created_at"] = saved_report.created_at.isoformat()
+            
+            return report_dict
+        except json.JSONDecodeError:
+            raise HTTPException(
+                status_code=500,
+                detail="Corrupted report data"
+            )
+        except Exception as parse_error:
+            # If parsing fails, it might be incomplete data - return processing status
+            return {
+                "status": "processing",
+                "message": "Analysis is still in progress",
+                "request_id": report_id,
+                "original_filename": saved_report.original_filename,
+                "created_at": saved_report.created_at.isoformat(),
+                "note": "Report data is being generated"
+            }
+        
+    except HTTPException:
+        # Re-raise HTTP exceptions as-is
+        raise
     except Exception as e:
         raise HTTPException(
             status_code=500,

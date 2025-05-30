@@ -13,9 +13,18 @@ sys.path.append(PROJECT_ROOT)
 from llm_utils import get_openai_chat_response, get_google_gemini_response
 from dotenv import load_dotenv
 
-# Load .env file from the project root
-DOTENV_PATH = os.path.join(PROJECT_ROOT, '.env')
-load_dotenv(DOTENV_PATH)
+# Load .env.local file from the backend directory for local development
+BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
+DOTENV_LOCAL_PATH = os.path.join(BACKEND_DIR, '.env.local')
+DOTENV_ROOT_PATH = os.path.join(PROJECT_ROOT, '.env')
+
+# Try to load .env.local first (for local development), then fallback to .env
+if os.path.exists(DOTENV_LOCAL_PATH):
+    print(f"Loading local environment from: {DOTENV_LOCAL_PATH}")
+    load_dotenv(DOTENV_LOCAL_PATH)
+else:
+    print(f"Loading environment from: {DOTENV_ROOT_PATH}")
+    load_dotenv(DOTENV_ROOT_PATH)
 
 app = FastAPI()
 
@@ -88,7 +97,7 @@ if __name__ == "__main__":
     import uvicorn
     print(f"Starting Uvicorn server for backend.main:app...")
     print(f"Project root (for .env): {PROJECT_ROOT}")
-    print(f"Attempting to load .env from: {DOTENV_PATH}")
+    print(f"Attempting to load .env from: {DOTENV_ROOT_PATH}")
     # For debugging, check if keys are loaded (don't print keys themselves)
     print(f"OpenAI Key Loaded: {'Yes' if os.getenv('OPENAI_API_KEY') else 'No'}")
     print(f"Google Key Loaded: {'Yes' if os.getenv('GOOGLE_API_KEY') else 'No'}")

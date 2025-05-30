@@ -26,7 +26,9 @@ from app.core.logging_config import get_logger, log_llm_request, log_llm_respons
 from app.core.error_handlers import (
     FileValidationError,
     ParsingError,
-    LLMServiceError
+    LLMServiceError,
+    LLMProcessingError,
+    LLMComplexityError
 )
 
 # Load environment variables
@@ -172,6 +174,91 @@ def pydantic_to_gemini_tool_dict(pydantic_model_cls, tool_name: str, tool_descri
     }
     return function_declaration_dict
 
+def preprocess_excel_to_text(file_bytes: bytes, original_filename: str) -> str:
+    """
+    Convert Excel file bytes to text format for LLM processing.
+    
+    Args:
+        file_bytes: Raw Excel file content as bytes
+        original_filename: Original filename for context and debugging
+        
+    Returns:
+        Text representation of Excel content
+        
+    Raises:
+        ParsingError: If Excel file cannot be processed
+    """
+    try:
+        # Load Excel file from bytes
+        workbook = openpyxl.load_workbook(io.BytesIO(file_bytes), data_only=True)
+        
+        # Get the active sheet (or first sheet)
+        sheet = workbook.active
+        
+        # Convert sheet to clean CSV-like text format, focusing on timesheet data
+        rows_data = []
+        header_found = False
+        total_rows_processed = 0
+        
+        # Iterate through all rows that have data
+        for row_idx, row in enumerate(sheet.iter_rows(values_only=True), 1):
+            total_rows_processed += 1
+            # Skip completely empty rows
+            if all(cell is None or str(cell).strip() == '' for cell in row):
+                continue
+            
+            # Convert each cell to string, handling None values and cleaning up
+            row_data = []
+            for cell in row:
+                if cell is None:
+                    row_data.append("")
+                elif isinstance(cell, (int, float)):
+                    # Format numbers consistently
+                    if isinstance(cell, float) and cell.is_integer():
+                        row_data.append(str(int(cell)))
+                    else:
+                        row_data.append(str(cell))
+                else:
+                    # Clean up string values
+                    cell_str = str(cell).strip()
+                    # Remove excessive whitespace and special characters that might confuse LLM
+                    cell_str = re.sub(r'\s+', ' ', cell_str)
+                    row_data.append(cell_str)
+            
+            # Only include rows that have meaningful data (not just formatting)
+            meaningful_data = [cell for cell in row_data if cell.strip()]
+            if len(meaningful_data) >= 2:  # At least 2 non-empty cells
+                rows_data.append(",".join(row_data))
+                
+                # Try to identify header row
+                row_text = " ".join(row_data).lower()
+                if not header_found and any(keyword in row_text for keyword in 
+                    ['employee', 'name', 'time', 'date', 'clock', 'in', 'out', 'punch']):
+                    header_found = True
+        
+        # Limit the data to prevent LLM overload while keeping essential information
+        if len(rows_data) > 200:  # If too many rows, keep header and recent data
+            # Keep first 20 rows (likely headers) and last 150 rows (most recent data)
+            rows_data = rows_data[:20] + rows_data[-150:]
+            logger.debug(f"Truncated Excel data to prevent LLM overload: keeping 170 most relevant rows out of {total_rows_processed} total rows")
+        
+        # Create clean, structured text content
+        text_content = f"TIMESHEET DATA from {original_filename}\n"
+        text_content += f"Sheet: {sheet.title}\n"
+        text_content += f"Data rows: {len(rows_data)}\n\n"
+        text_content += "CSV FORMAT:\n"
+        text_content += "\n".join(rows_data)
+        
+        logger.debug(f"Successfully converted Excel file '{original_filename}' to clean text format ({len(rows_data)} rows, {len(text_content)} chars)")
+        
+        return text_content
+        
+    except Exception as e:
+        raise ParsingError(
+            message=f"Failed to process Excel file '{original_filename}': {str(e)}",
+            filename=original_filename
+        )
+
 async def parse_file_to_structured_data(
     file_bytes: bytes,
     mime_type: str,
@@ -222,20 +309,13 @@ async def parse_file_to_structured_data(
         (original_filename and original_filename.lower().endswith(('.xls', '.xlsx')))
     )
     
-    if is_excel:
-        # Use standardized error handling (task 5.3)
-        raise FileValidationError(
-            message=f"Direct LLM schema extraction from raw Excel bytes for '{original_filename}' is not reliably supported",
-            filename=original_filename,
-            suggestion="Please convert the Excel file to CSV format, or export it as an image/PDF for processing"
-        )
-    
-    if not (mime_type in supported_types or is_image):
+    # Excel files are now supported through preprocessing
+    if not (mime_type in supported_types or is_image or is_excel):
         # Use standardized error handling (task 5.3)
         raise FileValidationError(
             message=f"Unsupported MIME type for LLM processing: {mime_type}",
             filename=original_filename,
-            suggestion="Supported formats: CSV, TXT, PDF, and image files (PNG, JPG, etc.)"
+            suggestion="Supported formats: CSV, TXT, PDF, Excel (XLS/XLSX), and image files (PNG, JPG, etc.)"
         )
     
     # Create debug directory if requested
@@ -245,7 +325,27 @@ async def parse_file_to_structured_data(
     
     try:
         # Process based on MIME type
-        if is_image:
+        if is_excel:
+            # Handle Excel files with preprocessing
+            logger.debug(f"Processing Excel file: {original_filename}")
+            excel_text_content = preprocess_excel_to_text(file_bytes, original_filename)
+            
+            # Extract just the CSV data part (after "CSV FORMAT:")
+            if "CSV FORMAT:" in excel_text_content:
+                csv_content = excel_text_content.split("CSV FORMAT:")[-1].strip()
+                # Process this as CSV content instead of Excel
+                text_content = csv_content
+                logger.debug(f"Converted Excel to CSV format for processing: {len(text_content)} characters")
+            else:
+                text_content = excel_text_content
+            
+            if debug_dir:
+                with open(os.path.join(debug_dir, "excel_extracted_content.txt"), 'w', encoding='utf-8') as f:
+                    f.write(excel_text_content)
+                with open(os.path.join(debug_dir, "csv_converted_content.txt"), 'w', encoding='utf-8') as f:
+                    f.write(text_content)
+                    
+        elif is_image:
             # Handle image files - for now, placeholder implementation
             text_content = f"Image file: {original_filename}\nNote: Image OCR processing not yet implemented. Please convert to CSV or text format."
             
@@ -266,8 +366,7 @@ async def parse_file_to_structured_data(
                     # Use standardized error handling (task 5.3)
                     raise ParsingError(
                         message=f"Could not decode text-based file '{original_filename}' as UTF-8 or Latin-1",
-                        filename=original_filename,
-                        suggestion="Ensure the file is saved in UTF-8 encoding or try converting it to a different format"
+                        filename=original_filename
                     )
             
             if debug_dir:
@@ -279,6 +378,32 @@ async def parse_file_to_structured_data(
         logger.debug("Content lines: %d", len(text_content.split('\n')))
         
         # Create prompt for text-based files
+        if is_excel:
+            text_prompt = f"""
+You are analyzing timesheet data that was extracted from an Excel file and converted to CSV format.
+
+Your task: Extract EVERY time punch event from this CSV timesheet data.
+
+The CSV data contains employee time punches with information like:
+- Employee names/IDs
+- Clock in/out times 
+- Dates
+- Any break periods
+
+Here is the CSV timesheet data:
+---
+{text_content}
+---
+
+Please systematically extract all punch events. For each event, identify:
+- Employee name/identifier
+- Whether it's a clock in, clock out, break start, or break end
+- The exact timestamp
+- Any relevant notes
+
+Be thorough and extract every single punch event you find in this CSV data.
+"""
+        else:
         text_prompt = f"""
 You are analyzing a complete timesheet file. This file contains ALL the time punch data for multiple employees.
 
@@ -319,21 +444,53 @@ Extract everything systematically - don't miss any employees or any punch events
                 json.dump(schema, f, indent=2)
         
         # Call LLM with function calling
+        # Get the model name that will be used
+        model_name = get_function_calling_model()
+        logger.info(f"Using LLM model: {model_name} for processing {original_filename}")
         logger.debug(f"Calling LLM with function calling for {original_filename}")
+        
+        # For Excel files, use faster processing with shorter timeout
+        if is_excel:
+            max_retries = 2  # Reduce retries for Excel files
+            initial_backoff = 1.0  # Shorter backoff
+        else:
+            max_retries = 3
+            initial_backoff = 2.0
         
         try:
             llm_response_data = get_gemini_response_with_function_calling(
                 prompt_parts=prompt_parts,
                 tools=tools,
-                max_retries=3,
-                initial_backoff_seconds=2.0,
-                temperature=0.1
+                max_retries=max_retries,
+                initial_backoff_seconds=initial_backoff,
+                temperature=0.1,
+                model_name_override=model_name  # Pass the model name explicitly
             )
         except Exception as llm_error:
-            # Use standardized error handling (task 5.3)
-            raise LLMServiceError(
-                message=f"Error during LLM processing for '{original_filename}': {str(llm_error)}",
-                service_name="Google Gemini"
+            error_str = str(llm_error)
+            logger.warning(f"LLM call failed for {original_filename}. Error: {error_str}")
+
+            # Check for specific errors indicating complexity or malformed function calls
+            if ("MALFORMED_FUNCTION_CALL" in error_str or 
+                "FinishReason" in error_str or 
+                "function calling" in error_str.lower() or
+                "input data is too complex" in error_str.lower() or
+                (is_excel and "response was blocked" in error_str.lower()) # Sometimes Excel errors manifest this way
+            ):
+                logger.error(f"LLM complexity error for {original_filename}: {error_str}. Raising LLMComplexityError.")
+                # Raise LLMComplexityError to signal this specific issue to the frontend
+                raise LLMComplexityError(
+                    message=f"The file '{original_filename}' contains data that is too complex for our current AI processing capabilities. This can happen with very large files or complex formatting. Please try with a smaller file or contact support for assistance with processing larger datasets.",
+                    original_filename=original_filename,
+                    llm_call_details=error_str
+                )
+            
+            # For other LLM errors, raise a more general LLMProcessingError
+            logger.error(f"General LLM processing error for {original_filename}: {error_str}")
+            raise LLMProcessingError(
+                message=f"An unexpected error occurred during LLM analysis for '{original_filename}'.",
+                original_filename=original_filename,
+                llm_call_details=error_str
             )
         
         if debug_dir:
