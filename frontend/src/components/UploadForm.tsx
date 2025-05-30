@@ -413,11 +413,13 @@ const UploadForm: React.FC<UploadFormProps> = (props) => {
   const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
 
   if (!apiKey) {
-    console.error("Google Maps API key is missing. Autocomplete will not work.");
+    console.warn("Google Maps API key is missing. Using fallback without autocomplete.");
+    // Return the component without Google Maps wrapper
+    return <UploadFormContent {...props} />;
   }
 
   return (
-    <APIProvider apiKey={apiKey || ''} libraries={['places']}>
+    <APIProvider apiKey={apiKey} libraries={['places']}>
       <UploadFormContent {...props} />
     </APIProvider>
   );
