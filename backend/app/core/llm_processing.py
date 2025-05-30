@@ -21,9 +21,19 @@ if parent_dir not in sys.path:
 
 from app.models.schemas import LLMProcessingOutput, LLMParsedPunchEvent
 from llm_utils.google_utils import get_gemini_response_with_function_calling
+from app.core.logging_config import get_logger, log_llm_request, log_llm_response
+# Import new error handling for task 5.3
+from app.core.error_handlers import (
+    FileValidationError,
+    ParsingError,
+    LLMServiceError
+)
 
 # Load environment variables
 load_dotenv()
+
+# Initialize logger for this module
+logger = get_logger("llm")
 
 def load_config() -> Dict[str, Any]:
     """
@@ -43,10 +53,10 @@ def load_config() -> Dict[str, Any]:
             with open(config_path, 'r') as f:
                 return json.load(f)
         else:
-            print(f"[DEBUG] Config file not found at {config_path}, using defaults")
+            logger.debug(f"Config file not found at {config_path}, using defaults")
             return {}
     except Exception as e:
-        print(f"[DEBUG] Error loading config: {e}, using defaults")
+        logger.debug(f"Error loading config: {e}, using defaults")
         return {}
 
 def get_function_calling_model() -> str:
@@ -59,7 +69,7 @@ def get_function_calling_model() -> str:
     # First check environment variable override (for testing)
     env_override = os.getenv("LLM_MODEL_OVERRIDE")
     if env_override:
-        print(f"[DEBUG] Using model from environment override: {env_override}")
+        logger.debug(f"Using model from environment override: {env_override}")
         return env_override
     
     # Load from config file
@@ -67,12 +77,12 @@ def get_function_calling_model() -> str:
     function_calling_model = config.get("google", {}).get("function_calling_model")
     
     if function_calling_model:
-        print(f"[DEBUG] Using function calling model from config: {function_calling_model}")
+        logger.debug(f"Using function calling model from config: {function_calling_model}")
         return function_calling_model
     
     # Final fallback
     fallback_model = "gemini-2.0-flash-exp"
-    print(f"[DEBUG] No config found, using fallback model: {fallback_model}")
+    logger.debug(f"No config found, using fallback model: {fallback_model}")
     return fallback_model
 
 def pydantic_to_gemini_tool_dict(pydantic_model_cls, tool_name: str, tool_description: str) -> Dict[str, Any]:
@@ -162,12 +172,19 @@ def pydantic_to_gemini_tool_dict(pydantic_model_cls, tool_name: str, tool_descri
     }
     return function_declaration_dict
 
-async def parse_file_to_structured_data(file_bytes: bytes, mime_type: str, original_filename: str, debug_dir: str = None) -> LLMProcessingOutput:
+async def parse_file_to_structured_data(
+    file_bytes: bytes,
+    mime_type: str,
+    original_filename: str,
+    debug_dir: Optional[str] = None
+) -> LLMProcessingOutput:
     """
-    Parse a file (CSV, XLSX, PDF, image, or text) to structured timesheet data using LLM.
+    Parse a file using LLM function calling to extract structured timesheet data.
     
-    This function implements task 3.3.2 by:
-    1. Handling various file types and converting them to appropriate formats for LLM processing
+    This function implements:
+    1. File type validation and processing
+    2. Text extraction or OCR depending on file type  
+    3. Chunking strategies for LLM processing
     2. Using function calling with Pydantic schemas to get structured data from the LLM
     3. Implementing retry logic for LLM API failures
     4. Returning structured punch event data or parsing issues
@@ -182,307 +199,216 @@ async def parse_file_to_structured_data(file_bytes: bytes, mime_type: str, origi
         LLMProcessingOutput containing parsed punch events and any parsing issues
         
     Raises:
-        ValueError: For unsupported file types or invalid file content
-        RuntimeError: For LLM processing failures or unexpected errors
+        FileValidationError: For unsupported file types or invalid file content
+        ParsingError: For file parsing/decoding failures  
+        LLMServiceError: For LLM processing failures or unexpected errors
     """
-    
     total_start_time = time.time()
-    print(f"[DEBUG] Starting parse_file_to_structured_data for {original_filename}")
+    logger.debug(f"Starting LLM processing for {original_filename}")
     
-    # Validate MIME type and file extension
-    supported_mime_types = {
-        'text/csv', 'text/plain', 'application/csv', 'application/vnd.ms-excel',
-        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        'application/pdf', 'application/octet-stream'
+    # Validate supported MIME types
+    supported_types = {
+        'text/csv', 'application/csv',
+        'text/plain',
+        'application/pdf'
     }
     
-    supported_image_types = {
-        'image/jpeg', 'image/jpg', 'image/png', 'image/tiff', 'image/bmp', 'image/gif'
-    }
+    # Check if it's an image MIME type
+    is_image = mime_type.startswith('image/') if mime_type else False
     
-    # Check if it's a supported type
-    is_supported = (
-        mime_type in supported_mime_types or 
-        mime_type in supported_image_types or
-        (mime_type and mime_type.startswith('image/'))
+    # Check for Excel files which need special handling
+    is_excel = (
+        mime_type in ['application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'] or
+        (original_filename and original_filename.lower().endswith(('.xls', '.xlsx')))
     )
     
-    if not is_supported:
-        raise ValueError(f"Unsupported MIME type: {mime_type}. Supported types: CSV, XLSX, PDF, images, and text files.")
+    if is_excel:
+        # Use standardized error handling (task 5.3)
+        raise FileValidationError(
+            message=f"Direct LLM schema extraction from raw Excel bytes for '{original_filename}' is not reliably supported",
+            filename=original_filename,
+            suggestion="Please convert the Excel file to CSV format, or export it as an image/PDF for processing"
+        )
     
-    # Determine if we need to handle this as an image or text-based file
-    is_image = mime_type in supported_image_types or (mime_type and mime_type.startswith('image/'))
+    if not (mime_type in supported_types or is_image):
+        # Use standardized error handling (task 5.3)
+        raise FileValidationError(
+            message=f"Unsupported MIME type for LLM processing: {mime_type}",
+            filename=original_filename,
+            suggestion="Supported formats: CSV, TXT, PDF, and image files (PNG, JPG, etc.)"
+        )
+    
+    # Create debug directory if requested
+    if debug_dir:
+        os.makedirs(debug_dir, exist_ok=True)
+        logger.debug(f"Debug mode enabled. Files will be saved to: {debug_dir}")
     
     try:
-        # Create debug directory if specified
-        if debug_dir:
-            os.makedirs(debug_dir, exist_ok=True)
-            print(f"[DEBUG] Created debug directory: {debug_dir}")
-        
-        # Prepare prompt parts for LLM
-        prepared_prompt_parts = []
-        
+        # Process based on MIME type
         if is_image:
-            # Handle image files (OCR + parsing)
-            print(f"Processing image file: {original_filename} (MIME: {mime_type})")
+            # Handle image files - for now, placeholder implementation
+            text_content = f"Image file: {original_filename}\nNote: Image OCR processing not yet implemented. Please convert to CSV or text format."
             
-            # Add text instruction
-            image_prompt = f"""
-Please analyze this timesheet image and extract all employee time punch data. The image shows a timesheet for: {original_filename}
-
-Extract the following information for each time punch:
-- Employee name/identifier
-- Date of the punch
-- Time of the punch (clock in/out)
-- Role/department if visible
-- Any break information if available
-
-Please be thorough and extract all visible time entries. If any data is unclear or ambiguous, note it in the parsing issues.
-"""
-            prepared_prompt_parts.append(image_prompt)
-            
-            # Add image data
-            prepared_prompt_parts.append({
-                "mime_type": mime_type,
-                "data": file_bytes
-            })
+        elif mime_type == 'application/pdf':
+            # Handle PDF files - for now, treat as binary and let LLM handle
+            text_content = f"PDF file: {original_filename}\nNote: PDF parsing not yet implemented. Please convert to CSV or image format."
             
         else:
-            # Handle text-based files (CSV, XLSX, PDF, TXT)
-            print(f"Processing text-based file: {original_filename} (MIME: {mime_type})")
-            
-            if mime_type == 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':
-                # Handle XLSX files
+            # Handle CSV, TXT, and other text files
+            try:
+                # Try to decode as text
+                text_content = file_bytes.decode('utf-8')
+            except UnicodeDecodeError:
                 try:
-                    import pandas as pd
-                    import io
-                    
-                    # Read XLSX file
-                    excel_data = pd.read_excel(io.BytesIO(file_bytes), sheet_name=None)  # Read all sheets
-                    
-                    # Convert to text representation
-                    text_content = f"Excel file: {original_filename}\n\n"
-                    for sheet_name, df in excel_data.items():
-                        text_content += f"Sheet: {sheet_name}\n"
-                        text_content += df.to_string(index=False, na_rep='')
-                        text_content += "\n\n"
-                    
-                    if debug_dir:
-                        with open(os.path.join(debug_dir, "excel_content.txt"), 'w', encoding='utf-8') as f:
-                            f.write(text_content)
-                    
-                except Exception as e:
-                    print(f"Error reading XLSX file: {e}")
-                    # Fallback to treating as binary data for LLM
-                    text_content = f"XLSX file content (binary): {original_filename}\nNote: Could not parse as Excel file due to: {e}"
-                    
-            elif mime_type == 'application/pdf':
-                # Handle PDF files - for now, treat as binary and let LLM handle
-                text_content = f"PDF file: {original_filename}\nNote: PDF parsing not yet implemented. Please convert to CSV or image format."
-                
-            else:
-                # Handle CSV, TXT, and other text files
-                try:
-                    # Try to decode as text
-                    text_content = file_bytes.decode('utf-8')
+                    # Try other common encodings
+                    text_content = file_bytes.decode('latin-1')
                 except UnicodeDecodeError:
-                    try:
-                        # Try other common encodings
-                        text_content = file_bytes.decode('latin-1')
-                    except UnicodeDecodeError:
-                        text_content = file_bytes.decode('utf-8', errors='replace')
-                
-                if debug_dir:
-                    with open(os.path.join(debug_dir, "file_content.txt"), 'w', encoding='utf-8') as f:
-                        f.write(text_content)
+                    # Use standardized error handling (task 5.3)
+                    raise ParsingError(
+                        message=f"Could not decode text-based file '{original_filename}' as UTF-8 or Latin-1",
+                        filename=original_filename,
+                        suggestion="Ensure the file is saved in UTF-8 encoding or try converting it to a different format"
+                    )
             
-            print(f"[DEBUG] Processing full file without chunking")
-            print(f"[DEBUG] Content size: {len(text_content)} characters")
-            print(f"[DEBUG] Content lines: {len(text_content.split('\n'))}")
-            
-            # Create prompt for text-based files
-            text_prompt = f"""
+            if debug_dir:
+                with open(os.path.join(debug_dir, "file_content.txt"), 'w', encoding='utf-8') as f:
+                    f.write(text_content)
+        
+        logger.debug(f"Processing full file without chunking")
+        logger.debug(f"Content size: {len(text_content)} characters")
+        logger.debug("Content lines: %d", len(text_content.split('\n')))
+        
+        # Create prompt for text-based files
+        text_prompt = f"""
 You are analyzing a complete timesheet file. This file contains ALL the time punch data for multiple employees.
 
 CRITICAL TASK: Extract EVERY SINGLE time punch event from this file.
 
-File: {original_filename}
-
-INSTRUCTIONS:
-1. Read through the ENTIRE file content carefully
-2. Find ALL time punch events (clock in, clock out, breaks)
-3. Each time entry = one event (even if multiple times appear on same line)
-4. Do NOT skip any employees or time entries
-5. Extract ALL events - missing events causes data loss
-
-File content:
+The file content is:
+---
 {text_content}
+---
 
-For each time punch event, extract:
-- Employee name/identifier exactly as it appears
-- Date (convert to YYYY-MM-DD format)
-- Time with timezone (convert to YYYY-MM-DDTHH:MM:SSZ)  
-- Punch type: "clock_in", "clock_out", "break_start", "break_end", or "unknown"
-- Role/department if available
-- Any notes
+Please parse ALL punch events found in this file. Look for:
+- Employee names (watch for variations/misspellings of the same person)
+- Clock in/out times 
+- Dates
+- Any break periods or meal times
+- Different job roles or departments if mentioned
 
-Be exhaustive - extract every single time punch event from this file.
+Extract everything systematically - don't miss any employees or any punch events.
 """
-            prepared_prompt_parts.append(text_prompt)
         
-        # Create the tool definition for structured output
-        timesheet_tool_dict = pydantic_to_gemini_tool_dict(
-            LLMProcessingOutput,
-            "timesheet_data_extractor", 
-            "Extract ALL time punch events from complete timesheet file. Must find every single event to avoid data loss."
+        # Prepare prompt parts
+        prompt_parts = [text_prompt]
+        
+        # Generate function calling schema
+        schema = pydantic_to_gemini_tool_dict(
+            LLMProcessingOutput, 
+            tool_name="extract_timesheet_data",
+            tool_description="Extract all timesheet punch events and parsing issues from the file content"
         )
+        tools = [schema]
         
-        # Optional model override for testing - defaults to Gemini 2.0 Flash
-        model_override = get_function_calling_model()
-        
-        print(f"[DEBUG] Tool definition created:")
-        print(f"[DEBUG] Tool name: {timesheet_tool_dict.get('name')}")
-        print(f"[DEBUG] Using model: {model_override}")
-        
-        print(f"[DEBUG] About to call get_gemini_response_with_function_calling...")
-        
-        # Save debug prompt if debug_dir is provided
         if debug_dir:
-            prompt_debug = {
-                "prompt_parts_count": len(prepared_prompt_parts),
-                "prompt_parts": []
-            }
-            for i, part in enumerate(prepared_prompt_parts):
-                if isinstance(part, str):
-                    prompt_debug["prompt_parts"].append({
-                        "type": "text",
-                        "length": len(part),
-                        "content": part[:1000] + ("..." if len(part) > 1000 else "")  # First 1000 chars
-                    })
-                else:
-                    prompt_debug["prompt_parts"].append({
-                        "type": "binary_data",
-                        "mime_type": part.get("mime_type"),
-                        "data_size": len(part.get("data", []))
-                    })
+            # Save the prompt and schema for debugging
+            with open(os.path.join(debug_dir, "llm_prompt.txt"), 'w', encoding='utf-8') as f:
+                f.write(text_prompt)
             
-            with open(os.path.join(debug_dir, "prompt_debug.json"), 'w') as f:
-                json.dump(prompt_debug, f, indent=2)
-            print(f"[DEBUG] Prompt debug info saved to {debug_dir}/prompt_debug.json")
+            with open(os.path.join(debug_dir, "llm_schema.json"), 'w', encoding='utf-8') as f:
+                json.dump(schema, f, indent=2)
         
-        start_time = time.time()
-        llm_response_data = get_gemini_response_with_function_calling(
-            prompt_parts=prepared_prompt_parts,
-            tools=[timesheet_tool_dict],
-            model_name_override=model_override,
-            max_retries=3,
-            temperature=0.0  # Deterministic for consistent results
-        )
-        end_time = time.time()
-        duration = round(end_time - start_time, 2)
+        # Call LLM with function calling
+        logger.debug(f"Calling LLM with function calling for {original_filename}")
         
-        print(f"[DEBUG] LLM call completed, response type: {type(llm_response_data)}")
-        print(f"[DEBUG] LLM processing took {duration} seconds")
-        if isinstance(llm_response_data, str):
-            print(f"[DEBUG] String response length: {len(llm_response_data)}")
-        elif isinstance(llm_response_data, dict):
-            print(f"[DEBUG] Dict response keys: {list(llm_response_data.keys())}")
-
-        if isinstance(llm_response_data, dict):
-            # Function call was successful, response_data contains the arguments
-            # Construct the Pydantic object from the LLM's arguments
+        try:
+            llm_response_data = get_gemini_response_with_function_calling(
+                prompt_parts=prompt_parts,
+                tools=tools,
+                max_retries=3,
+                initial_backoff_seconds=2.0,
+                temperature=0.1
+            )
+        except Exception as llm_error:
+            # Use standardized error handling (task 5.3)
+            raise LLMServiceError(
+                message=f"Error during LLM processing for '{original_filename}': {str(llm_error)}",
+                service_name="Google Gemini"
+            )
+        
+        if debug_dir:
+            with open(os.path.join(debug_dir, "llm_response.json"), 'w', encoding='utf-8') as f:
+                json.dump(llm_response_data, f, indent=2)
+        
+        # Process LLM response
+        if isinstance(llm_response_data, dict) and "punch_events" in llm_response_data:
             try:
-                print(f"[DEBUG] LLM response keys: {list(llm_response_data.keys())}")
-                print(f"[DEBUG] Processing {len(llm_response_data.get('punch_events', []))} events")
-                
-                # Check if the response is a single punch event or the expected array format
-                if "punch_events" in llm_response_data:
-                    # Expected format with punch_events array
-                    parsed_output = LLMProcessingOutput(
-                        punch_events=llm_response_data.get("punch_events", []),
-                        parsing_issues=llm_response_data.get("parsing_issues", []) or []  # Handle None case
-                    )
-                elif "employee_identifier_in_file" in llm_response_data and "timestamp" in llm_response_data:
-                    # LLM returned a single punch event - wrap it in an array
-                    print(f"[DEBUG] LLM returned single punch event, wrapping in array")
-                    parsed_output = LLMProcessingOutput(
-                        punch_events=[llm_response_data],
-                        parsing_issues=[]
-                    )
-                else:
-                    # Try to extract from any key that looks like it contains punch data
-                    punch_events = []
-                    for key, value in llm_response_data.items():
-                        if isinstance(value, list) and value and isinstance(value[0], dict):
-                            if "employee_identifier_in_file" in value[0]:
-                                punch_events = value
-                                break
-                    
-                    parsed_output = LLMProcessingOutput(
-                        punch_events=punch_events,
-                        parsing_issues=[]
-                    )
-                
-                print(f"Successfully parsed data for {original_filename} via LLM utility function call.")
-                print(f"[DEBUG] Final result: {len(parsed_output.punch_events)} events, {len(parsed_output.parsing_issues)} issues")
+                parsed_output = LLMProcessingOutput(**llm_response_data)
+                logger.info(f"LLM successfully parsed {len(parsed_output.punch_events)} punch events from {original_filename}")
                 
                 total_end_time = time.time()
                 total_duration = round(total_end_time - total_start_time, 2)
-                print(f"[DEBUG] Total processing time for {original_filename}: {total_duration} seconds")
+                logger.debug(f"Total processing time for {original_filename}: {total_duration} seconds")
                 
                 return parsed_output
-            except Exception as pydantic_error: # Catch errors during Pydantic model instantiation
-                error_msg = f"LLM returned function call arguments, but failed to create Pydantic model for '{original_filename}'. Error: {pydantic_error}. LLM Args: {llm_response_data}"
-                print(error_msg)
-                raise RuntimeError(error_msg)
+            except Exception as pydantic_error:
+                # Use standardized error handling (task 5.3)
+                raise ParsingError(
+                    message=f"LLM returned function call arguments, but failed to create Pydantic model for '{original_filename}'",
+                    filename=original_filename,
+                    parsing_issues=[f"Pydantic validation error: {str(pydantic_error)}"]
+                )
         elif isinstance(llm_response_data, str) and llm_response_data.startswith("Error:"):
-            # An error string was returned from the utility
-            error_msg = f"LLM utility failed for '{original_filename}': {llm_response_data}"
-            print(error_msg)
-            raise RuntimeError(error_msg)
-        elif isinstance(llm_response_data, str):
-            # LLM returned text instead of calling the function.
-            # This is unexpected if a tool was provided and the prompt was clear.
-            # Check if it's a Google API error specifically
-            if "Google API Error" in llm_response_data and "500 INTERNAL" in llm_response_data:
-                error_msg = f"Google's AI service is temporarily unavailable. Please try again in a few minutes. (Technical details: {llm_response_data[:200]}...)"
-            elif "Google API Error" in llm_response_data:
-                error_msg = f"AI processing service error. Please try again. (Technical details: {llm_response_data[:200]}...)"
-            else:
-                error_msg = f"LLM did not use the function call for '{original_filename}' as expected, returned text instead: '{llm_response_data[:500]}...'"
-            print(error_msg)
-            
-            total_end_time = time.time()
-            total_duration = round(total_end_time - total_start_time, 2)
-            print(f"[DEBUG] Total processing time for {original_filename} (LLM text response): {total_duration} seconds")
-            
-            return LLMProcessingOutput(
-                punch_events=[],
-                parsing_issues=[error_msg]
+            # Use standardized error handling (task 5.3)
+            raise LLMServiceError(
+                message=f"LLM utility failed for '{original_filename}': {llm_response_data}",
+                service_name="Google Gemini"
             )
+        elif isinstance(llm_response_data, str):
+            # LLM returned text instead of calling the function
+            if "Google API Error" in llm_response_data and "500 INTERNAL" in llm_response_data:
+                error_msg = f"Google's AI service is temporarily unavailable. Please try again in a few minutes."
+                raise LLMServiceError(
+                    message=error_msg,
+                    service_name="Google Gemini"
+                )
+            elif "Google API Error" in llm_response_data:
+                error_msg = f"AI processing service error. Please try again."
+                raise LLMServiceError(
+                    message=error_msg,
+                    service_name="Google Gemini"
+                )
+            else:
+                error_msg = f"LLM did not use the function call for '{original_filename}' as expected, returned text instead"
+                raise ParsingError(
+                    message=error_msg,
+                    filename=original_filename,
+                    parsing_issues=[f"LLM returned text: {llm_response_data[:500]}..."]
+                )
         else:
             # Unexpected response type from utility
             error_msg = f"Unexpected response type from LLM utility for '{original_filename}': {type(llm_response_data)}"
-            print(error_msg)
-            raise RuntimeError(error_msg)
-
-    except ValueError as ve: # Re-raise ValueErrors from MIME type handling or decoding
+            raise LLMServiceError(
+                message=error_msg,
+                service_name="Google Gemini"
+            )
+            
+    except (FileValidationError, ParsingError, LLMServiceError):
+        # Re-raise our standardized errors
         total_end_time = time.time()
         total_duration = round(total_end_time - total_start_time, 2)
-        print(f"[DEBUG] Total processing time for {original_filename} (ValueError): {total_duration} seconds")
-        raise ve 
-    except RuntimeError as re: # Re-raise RuntimeErrors from LLM utility or Pydantic parsing
-        total_end_time = time.time()
-        total_duration = round(total_end_time - total_start_time, 2)
-        print(f"[DEBUG] Total processing time for {original_filename} (RuntimeError): {total_duration} seconds")
-        raise re
+        logger.debug(f"Total processing time for {original_filename} (error): {total_duration} seconds")
+        raise
     except Exception as e:
+        # Catch-all for unexpected errors - convert to LLMServiceError
         total_end_time = time.time()
         total_duration = round(total_end_time - total_start_time, 2)
-        print(f"[DEBUG] Total processing time for {original_filename} (Exception): {total_duration} seconds")
-        error_msg = f"Error during LLM processing for {original_filename} in parse_file_to_structured_data: {e} (Type: {e.__class__.__name__})"
-        print(error_msg)
-        raise RuntimeError(error_msg)
+        logger.debug(f"Total processing time for {original_filename} (unexpected error): {total_duration} seconds")
+        
+        raise LLMServiceError(
+            message=f"Unexpected error during LLM processing for '{original_filename}': {str(e)}",
+            service_name="Google Gemini"
+        )
 
 # Example Usage (for testing purposes)
 async def main_test():
@@ -493,50 +419,50 @@ async def main_test():
     mime_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" 
 
     if not (os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")):
-        print("\nSkipping real LLM call test: GOOGLE_API_KEY or GEMINI_API_KEY not set.")
+        logger.info("\nSkipping real LLM call test: GOOGLE_API_KEY or GEMINI_API_KEY not set.")
         return
 
     if not os.path.exists(excel_file_path):
-        print(f"\nTest Excel file not found at {excel_file_path}. Please ensure it's in the correct location.")
+        logger.info(f"\nTest Excel file not found at {excel_file_path}. Please ensure it's in the correct location.")
         # Also check relative to the script location if run from a different CWD
         alt_path = os.path.join(os.path.dirname(__file__), "..", "tests", "core", original_filename)
         if not os.path.exists(alt_path):
-            print(f"Also not found at {alt_path}")
+            logger.info(f"Also not found at {alt_path}")
             return
         else:
             excel_file_path = alt_path # Use the found path
-            print(f"Using file found at: {excel_file_path}")
+            logger.info(f"Using file found at: {excel_file_path}")
 
 
     try:
-        print(f"\n--- Testing with real Excel file: {original_filename} ---")
+        logger.info(f"\n--- Testing with real Excel file: {original_filename} ---")
         with open(excel_file_path, "rb") as f_excel:
             excel_file_bytes = f_excel.read()
         
-        print(f"Attempting to parse: {original_filename} (MIME: {mime_type})")
+        logger.info(f"Attempting to parse: {original_filename} (MIME: {mime_type})")
         parsed_data = await parse_file_to_structured_data(excel_file_bytes, mime_type, original_filename)
         
-        print(f"\n--- LLM Parsed Output for {original_filename} ---")
-        print(parsed_data.model_dump_json(indent=2))
+        logger.info(f"\n--- LLM Parsed Output for {original_filename} ---")
+        logger.info(parsed_data.model_dump_json(indent=2))
         
         if parsed_data.punch_events:
-            print(f"\nSuccessfully parsed {len(parsed_data.punch_events)} punch events.")
+            logger.info(f"\nSuccessfully parsed {len(parsed_data.punch_events)} punch events.")
         else:
-            print("\nNo punch events were parsed.")
+            logger.info("\nNo punch events were parsed.")
         
         if parsed_data.parsing_issues:
-            print("\nLLM Reported Parsing Issues:")
+            logger.info("\nLLM Reported Parsing Issues:")
             for issue in parsed_data.parsing_issues:
-                print(f"- {issue}")
+                logger.info(f"- {issue}")
         else:
-            print("\nNo parsing issues reported by LLM.")
+            logger.info("\nNo parsing issues reported by LLM.")
 
     except ValueError as ve:
-        print(f"\nValueError during Excel test for {original_filename}: {ve}")
+        logger.error(f"\nValueError during Excel test for {original_filename}: {ve}")
     except RuntimeError as re:
-        print(f"\nRuntimeError during Excel test for {original_filename}: {re}")
+        logger.error(f"\nRuntimeError during Excel test for {original_filename}: {re}")
     except Exception as e:
-        print(f"\nAn unexpected error occurred during Excel test for {original_filename}: {e} (Type: {e.__class__.__name__}) ")
+        logger.error(f"\nAn unexpected error occurred during Excel test for {original_filename}: {e} (Type: {e.__class__.__name__}) ")
 
 
 if __name__ == '__main__':
@@ -560,8 +486,8 @@ if __name__ == '__main__':
 
     # Ensure API key is set for tests to run effectively
     if os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY"):
-        print("Found Google API Key, running main_test for llm_processing.")
+        logger.info("Found Google API Key, running main_test for llm_processing.")
         asyncio.run(run_all_tests())
     else:
-        print("GOOGLE_API_KEY or GEMINI_API_KEY not set. Skipping llm_processing.py main_test().")
-        print("Please create a .env file or set environment variables (e.g., GOOGLE_API_KEY='your_key_here').") 
+        logger.info("GOOGLE_API_KEY or GEMINI_API_KEY not set. Skipping llm_processing.py main_test().")
+        logger.info("Please create a .env file or set environment variables (e.g., GOOGLE_API_KEY='your_key_here').") 
