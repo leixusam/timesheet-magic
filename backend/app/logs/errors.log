@@ -1,0 +1,5 @@
+2025-05-29 16:52:09 | ERROR    | timesheet.test | test_logging_implementation:41 | Error message test
+2025-05-29 16:52:09 | ERROR    | timesheet.analysis | log_database_operation:309 | [request_id=test-1748562729] Database error | Operation: INSERT | Table: leads | Error: Connection timeout
+2025-05-29 17:01:15 | ERROR    | timesheet.supabase | log_database_operation:309 | [request_id=test-20250529-170115] Database error | Operation: INSERT | Table: leads | Error: Supabase client not available
+2025-05-29 17:01:15 | ERROR    | timesheet.supabase | log_database_operation:309 | [request_id=test-20250529-170115] Database error | Operation: INSERT | Table: analysis_metadata | Error: Supabase client not available
+2025-05-29 17:01:15 | ERROR    | timesheet.supabase | log_database_operation:309 | [request_id=error-test-20250529-170115] Database error | Operation: INSERT | Table: analysis_metadata | Error: Supabase client not available

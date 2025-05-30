@@ -1,0 +1,5 @@
+2025-05-29 16:50:47 | INFO     | timesheet | setup_logging:170 | Logging configured - Level: DEBUG, File logging: True
+2025-05-29 16:50:47 | DEBUG    | timesheet.test | <module>:1 | Debug message
+2025-05-29 16:50:47 | INFO     | timesheet.test | <module>:1 | Info message
+2025-05-29 16:50:47 | WARNING  | timesheet.test | <module>:1 | Warning message
+2025-05-29 16:50:47 | ERROR    | timesheet.test | <module>:1 | Error message

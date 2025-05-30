@@ -1,16 +1,55 @@
 from fastapi import FastAPI
 from app.api.endpoints.analysis import router as analysis_router
+from app.api.endpoints.reports import router as reports_router
+from app.db import create_tables
+from app.core.logging_config import ensure_logging_initialized, get_logger
+# Import error handlers for task 5.3
+from app.core.error_handlers import (
+    TimesheetAnalysisError,
+    timesheet_analysis_error_handler,
+    general_exception_handler
+)
 
-app = FastAPI(title="TimeSheet Magic API")
+# Initialize logging as early as possible
+ensure_logging_initialized()
+logger = get_logger("main")
 
-# Include the analysis endpoints
-app.include_router(analysis_router, tags=["Analysis"])
+# Create database tables
+create_tables()
+logger.info("Database tables created/verified")
 
-@app.get("/health", tags=["Health"])
+app = FastAPI(
+    title="Time Sheet Magic API",
+    description="Automated timesheet analysis and compliance checking system",
+    version="1.0.0",
+    debug=False  # Set to True in development for detailed error responses
+)
+
+# Register global error handlers (task 5.3)
+app.add_exception_handler(TimesheetAnalysisError, timesheet_analysis_error_handler)
+app.add_exception_handler(Exception, general_exception_handler)
+
+# Include routers
+app.include_router(analysis_router, prefix="/api", tags=["analysis"])
+app.include_router(reports_router, prefix="/api", tags=["reports"])
+
+@app.get("/")
+async def root():
+    """Root endpoint for health check."""
+    return {
+        "service": "Time Sheet Magic API",
+        "status": "healthy",
+        "version": "1.0.0"
+    }
+
+@app.get("/health")
 async def health_check():
-    return {"status": "ok"}
+    """Health check endpoint for monitoring."""
+    return {
+        "status": "healthy",
+        "timestamp": "2024-01-01T00:00:00Z"
+    }
 
-# Placeholder for future root path information or actions
-@app.get("/", tags=["Root"])
-async def read_root():
-    return {"message": "Welcome to TimeSheet Magic API"} 
+logger.info("Time Sheet Magic API started successfully")
+logger.info("Registered endpoints: /api/analyze, /api/submit-lead, /api/reports/*")
+logger.info("Global error handlers registered for standardized error responses") 

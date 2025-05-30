@@ -1,9 +1,11 @@
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends
 from pydantic import BaseModel, EmailStr, ValidationError
 from typing import Optional
+from sqlalchemy.orm import Session
 import json
 import uuid
 import os
+import time
 from datetime import datetime
 
 # Import our core processing modules
@@ -17,6 +19,32 @@ from app.core.reporting import (
     get_all_violation_types_with_advice
 )
 from app.models.schemas import LeadCaptureData, FinalAnalysisReport
+from app.db import get_db, SavedReport, Lead
+from app.db.supabase_client import log_lead_to_supabase, log_analysis_to_supabase
+from app.core.logging_config import (
+    get_logger, 
+    log_analysis_start, 
+    log_parsing_result, 
+    log_compliance_analysis,
+    log_database_operation,
+    log_performance_metric
+)
+# Import new error handling system (task 5.3)
+from app.core.error_handlers import (
+    ErrorHandler,
+    TimesheetAnalysisError,
+    FileValidationError,
+    FileSizeError,
+    ParsingError,
+    LLMServiceError,
+    ComplianceAnalysisError,
+    DatabaseError,
+    validate_file_upload,
+    map_core_exceptions
+)
+
+# Initialize logger for this module
+logger = get_logger("analysis")
 
 router = APIRouter()
 
@@ -36,84 +64,165 @@ class LeadSubmissionRequest(BaseModel):
     store_address: str
 
 @router.post("/submit-lead")
-async def submit_lead_data(lead_request: LeadSubmissionRequest):
+async def submit_lead_data(lead_request: LeadSubmissionRequest, db: Session = Depends(get_db)):
     """
     Submit lead capture data to be stored in the database.
     This endpoint receives lead information after file analysis is complete.
     """
+    lead_logger = get_logger("analysis", {"request_id": lead_request.analysis_id})
+    
     try:
-        # TODO: Here we would typically:
-        # 1. Validate the analysis_id exists
-        # 2. Store the lead data in Supabase
-        # 3. Link the lead to the analysis session
+        lead_logger.info(f"Lead submission started for manager: {lead_request.manager_name}")
         
-        # For now, we'll create a basic response structure
-        # The actual Supabase integration will be implemented in task 5.2.1
+        # Verify the analysis_id exists in saved reports
+        saved_report = db.query(SavedReport).filter(SavedReport.id == lead_request.analysis_id).first()
         
+        if not saved_report:
+            lead_logger.warning(f"Analysis report not found for ID: {lead_request.analysis_id}")
+            # Use standardized error handling (task 5.3)
+            error = TimesheetAnalysisError(
+                message="Analysis report not found for the provided ID",
+                code="ANALYSIS_NOT_FOUND",
+                category="not_found",
+                severity="low",
+                http_status=404,
+                suggestion="Verify the analysis ID is correct or run a new analysis"
+            )
+            raise ErrorHandler.create_http_exception(error, lead_request.analysis_id)
+        
+        # Update the saved report with lead information
+        saved_report.manager_name = lead_request.manager_name
+        saved_report.manager_email = lead_request.email
+        saved_report.manager_phone = lead_request.phone
+        saved_report.store_name = lead_request.store_name
+        saved_report.store_address = lead_request.store_address
+        
+        # Create lead record
         lead_id = str(uuid.uuid4())
-        timestamp = datetime.utcnow()
+        lead = Lead(
+            id=lead_id,
+            analysis_id=lead_request.analysis_id,
+            manager_name=lead_request.manager_name,
+            email=lead_request.email,
+            phone=lead_request.phone,
+            store_name=lead_request.store_name,
+            store_address=lead_request.store_address
+        )
         
-        # Log the lead submission (for now just print, later will be Supabase)
-        print(f"Lead submitted at {timestamp}:")
-        print(f"  Analysis ID: {lead_request.analysis_id}")
-        print(f"  Manager: {lead_request.manager_name} ({lead_request.email})")
-        print(f"  Store: {lead_request.store_name}")
-        print(f"  Address: {lead_request.store_address}")
-        if lead_request.phone:
-            print(f"  Phone: {lead_request.phone}")
+        db.add(lead)
+        db.commit()
+        
+        lead_logger.info(
+            f"Lead submitted successfully | Manager: {lead_request.manager_name} | "
+            f"Email: {lead_request.email} | Store: {lead_request.store_name} | "
+            f"Lead ID: {lead_id}"
+        )
+        
+        log_database_operation(
+            lead_logger, "INSERT", "leads", True, lead_id
+        )
+        
+        # Log lead data to Supabase (task 5.2.1)
+        supabase_result = await log_lead_to_supabase(
+            manager_name=lead_request.manager_name,
+            email=lead_request.email,
+            store_name=lead_request.store_name,
+            store_address=lead_request.store_address,
+            phone=lead_request.phone,
+            analysis_id=lead_request.analysis_id,
+            request_id=lead_request.analysis_id
+        )
+        
+        if supabase_result["success"]:
+            lead_logger.info(f"Lead data also logged to Supabase successfully")
+        else:
+            lead_logger.warning(f"Failed to log lead to Supabase: {supabase_result.get('error', 'Unknown error')}")
         
         # Return success response
-        return {
+        response = {
             "success": True,
             "message": "Lead data submitted successfully",
             "lead_id": lead_id,
-            "analysis_id": lead_request.analysis_id,
-            "timestamp": timestamp.isoformat()
+            "analysis_id": lead_request.analysis_id
         }
         
+        # Include Supabase status in response for debugging
+        if not supabase_result["success"]:
+            response["supabase_warning"] = f"Supabase logging failed: {supabase_result.get('error', 'Unknown error')}"
+        
+        return response
+        
+    except HTTPException:
+        # Re-raise HTTPExceptions from error handling
+        db.rollback()
+        raise
     except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to submit lead data: {str(e)}"
+        db.rollback()
+        lead_logger.error(f"Failed to submit lead data: {str(e)}")
+        log_database_operation(
+            lead_logger, "INSERT", "leads", False, None, str(e)
         )
+        
+        # Use standardized error handling (task 5.3)
+        mapped_error = map_core_exceptions(e, "lead_submission")
+        if isinstance(mapped_error, DatabaseError):
+            # Already mapped correctly
+            raise ErrorHandler.create_http_exception(mapped_error, lead_request.analysis_id)
+        else:
+            # Create database error
+            db_error = DatabaseError(
+                message=f"Failed to submit lead data: {str(e)}",
+                operation="lead_submission"
+            )
+            raise ErrorHandler.create_http_exception(db_error, lead_request.analysis_id)
 
 @router.post("/analyze")
-async def analyze_timesheet(file: UploadFile = File(...)):
+async def analyze_timesheet(file: UploadFile = File(...), db: Session = Depends(get_db)):
     # Generate unique request ID
     request_id = str(uuid.uuid4())
+    request_logger = get_logger("analysis", {"request_id": request_id})
+    
+    # Track overall processing time
+    analysis_start_time = time.time()
     
     # Get file information
     content_type = file.content_type
     filename = file.filename or "unknown_file"
     file_extension = filename.split(".")[-1].lower() if "." in filename else None
     
-    # Validate file type
-    supported_types = {
-        "text/csv", "application/csv",
-        "application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        "application/pdf",
-        "text/plain"
-    }
-    supported_extensions = {"csv", "xls", "xlsx", "pdf", "txt", "png", "jpg", "jpeg", "tiff", "bmp", "gif"}
-    
-    if not (content_type in supported_types or 
-            file_extension in supported_extensions or 
-            (content_type and content_type.startswith("image/"))):
-        raise HTTPException(
-            status_code=400, 
-            detail=f"Unsupported file type: {content_type or file_extension}. Please upload CSV, XLSX, PDF, common image formats, or TXT files."
+    # Read file bytes first to get size
+    try:
+        file_bytes = await file.read()
+        file_size = len(file_bytes)
+    except Exception as e:
+        request_logger.error(f"Failed to read uploaded file: {str(e)}")
+        file_error = FileValidationError(
+            message="Failed to read uploaded file",
+            filename=filename
         )
+        raise ErrorHandler.create_http_exception(file_error, request_id)
+    
+    # Validate file using new error handling system (task 5.3)
+    try:
+        validate_file_upload(file_bytes, filename, content_type)
+    except (FileValidationError, FileSizeError) as e:
+        request_logger.warning(f"File validation failed: {e.message}")
+        raise ErrorHandler.create_http_exception(e, request_id)
+    
+    # Log analysis start with file details (task 5.1.1 - raw input type)
+    log_analysis_start(
+        request_logger, request_id, filename, file_size, 
+        content_type or "unknown", file_extension
+    )
 
     try:
-        # Read file bytes
-        file_bytes = await file.read()
-        
         # Determine debug directory (optional)
         debug_dir = os.getenv("DEBUG_DIR")
         if debug_dir:
             debug_dir = os.path.join(debug_dir, f"analysis_{request_id}")
         
         # Step 1: Parse file to structured data using LLM
+        parsing_start_time = time.time()
         try:
             llm_output = await parse_file_to_structured_data(
                 file_bytes=file_bytes,
@@ -122,48 +231,102 @@ async def analyze_timesheet(file: UploadFile = File(...)):
                 debug_dir=debug_dir
             )
             
-            print(f"[DEBUG] LLM processing completed for {filename}")
-            print(f"[DEBUG] - Punch events count: {len(llm_output.punch_events) if llm_output.punch_events else 0}")
-            print(f"[DEBUG] - Parsing issues count: {len(llm_output.parsing_issues) if llm_output.parsing_issues else 0}")
-            if llm_output.parsing_issues:
-                print(f"[DEBUG] - Parsing issues: {llm_output.parsing_issues}")
+            parsing_end_time = time.time()
+            parsing_duration = parsing_end_time - parsing_start_time
+            
+            events_found = len(llm_output.punch_events) if llm_output.punch_events else 0
+            parsing_success = events_found > 0
+            
+            # Log parsing result (task 5.1.1 - parse success/failure and processing time)
+            log_parsing_result(
+                request_logger, request_id, filename, parsing_success,
+                events_found, parsing_duration, llm_output.parsing_issues
+            )
             
             if not llm_output.punch_events:
-                print(f"[DEBUG] No punch events found, creating error report")
-                error_report = FinalAnalysisReport(
+                request_logger.error("No punch events found in file")
+                
+                # Log parsing failure to Supabase (task 5.2.2)
+                total_duration = time.time() - analysis_start_time
+                supabase_result = await log_analysis_to_supabase(
                     request_id=request_id,
                     original_filename=filename,
                     status="error_parsing_failed",
-                    status_message="No punch events could be extracted from the file. Please verify the file contains timesheet data with employee names, dates, and clock in/out times.",
-                    parsing_issues_summary=llm_output.parsing_issues or ["No punch events found in file"]
+                    file_size=file_size,
+                    file_type=content_type or file_extension,
+                    processing_time_seconds=total_duration,
+                    error_message="No punch events found in file"
                 )
-                print(f"[DEBUG] Raising HTTPException with 422 status")
-                # Return 422 for validation errors (no data found)
-                raise HTTPException(status_code=422, detail=error_report.model_dump())
+                
+                # Use standardized error handling (task 5.3)
+                parsing_error = ParsingError(
+                    message="No punch events could be extracted from the file",
+                    filename=filename,
+                    parsing_issues=llm_output.parsing_issues,
+                    suggestion="Please verify the file contains timesheet data with employee names, dates, and clock in/out times"
+                )
+                raise ErrorHandler.create_http_exception(parsing_error, request_id)
         
-        except Exception as e:
-            error_report = FinalAnalysisReport(
+        except (FileValidationError, ParsingError, LLMServiceError) as e:
+            # These are already standardized errors - re-raise as HTTPException
+            parsing_duration = time.time() - parsing_start_time
+            log_parsing_result(
+                request_logger, request_id, filename, False, 0, parsing_duration
+            )
+            
+            # Log parsing failure to Supabase (task 5.2.2)
+            total_duration = time.time() - analysis_start_time
+            supabase_result = await log_analysis_to_supabase(
                 request_id=request_id,
                 original_filename=filename,
                 status="error_parsing_failed",
-                status_message=f"Failed to parse timesheet file: {str(e)}",
-                parsing_issues_summary=[f"LLM parsing error: {str(e)}"]
+                file_size=file_size,
+                file_type=content_type or file_extension,
+                processing_time_seconds=total_duration,
+                error_message=e.message
             )
-            # Return 422 for parsing/validation errors
-            raise HTTPException(status_code=422, detail=error_report.model_dump())
+            
+            raise ErrorHandler.create_http_exception(e, request_id)
+            
+        except Exception as e:
+            parsing_duration = time.time() - parsing_start_time
+            log_parsing_result(
+                request_logger, request_id, filename, False, 0, parsing_duration
+            )
+            request_logger.error(f"LLM parsing failed: {str(e)}")
+            
+            # Log parsing failure to Supabase (task 5.2.2)
+            total_duration = time.time() - analysis_start_time
+            supabase_result = await log_analysis_to_supabase(
+                request_id=request_id,
+                original_filename=filename,
+                status="error_parsing_failed",
+                file_size=file_size,
+                file_type=content_type or file_extension,
+                processing_time_seconds=total_duration,
+                error_message=f"LLM parsing failed: {str(e)}"
+            )
+            
+            # Map to appropriate error type (task 5.3)
+            mapped_error = map_core_exceptions(e, filename)
+            raise ErrorHandler.create_http_exception(mapped_error, request_id)
         
         # Step 2: Detect duplicate employees and get warnings
+        request_logger.debug("Detecting duplicate employees")
         duplicate_groups = detect_duplicate_employees(llm_output.punch_events)
         duplicate_warnings = []
         if duplicate_groups:
             for canonical_name, variations in duplicate_groups.items():
                 if len(variations) > 1:
-                    duplicate_warnings.append(
-                        f"Potential duplicate employee '{canonical_name}' found with variations: {', '.join(variations)}"
-                    )
+                    warning_msg = f"Potential duplicate employee '{canonical_name}' found with variations: {', '.join(variations)}"
+                    duplicate_warnings.append(warning_msg)
+                    request_logger.warning(f"Duplicate employee detected: {warning_msg}")
         
         # Step 3: Run compliance analysis with cost calculations
+        compliance_start_time = time.time()
         try:
+            request_logger.debug("Starting compliance analysis")
+            
             # Generate KPI data
             kpis = calculate_kpi_tiles_data(llm_output.punch_events)
             
@@ -175,6 +338,15 @@ async def analyze_timesheet(file: UploadFile = File(...)):
             
             # Generate employee summaries
             employee_summaries = generate_employee_summary_table_data(llm_output.punch_events)
+            
+            compliance_end_time = time.time()
+            compliance_duration = compliance_end_time - compliance_start_time
+            
+            # Log compliance analysis results
+            log_compliance_analysis(
+                request_logger, request_id, len(all_violations),
+                len(employee_summaries), compliance_duration
+            )
             
             # Generate overall summary text
             overall_summary = _generate_overall_report_summary(
@@ -207,31 +379,111 @@ async def analyze_timesheet(file: UploadFile = File(...)):
                 overall_report_summary_text=overall_summary
             )
             
-            # Note: Lead data will be submitted separately via /submit-lead endpoint
+            # Automatically save successful reports to database
+            try:
+                employee_count = len(employee_summaries) if employee_summaries else 0
+                total_violations = len(all_violations) if all_violations else 0
+                total_hours = kpis.total_scheduled_labor_hours if kpis else 0
+                overtime_cost = kpis.estimated_overtime_cost if kpis else 0
+                
+                saved_report = SavedReport(
+                    id=request_id,
+                    original_filename=filename,
+                    report_data=report.model_dump_json(),
+                    file_size=file_size,
+                    file_type=content_type or file_extension,
+                    employee_count=employee_count,
+                    total_violations=total_violations,
+                    total_hours=total_hours,
+                    overtime_cost=overtime_cost
+                )
+                
+                db.add(saved_report)
+                db.commit()
+                
+                log_database_operation(
+                    request_logger, "INSERT", "saved_reports", True, request_id
+                )
+                
+                # Log analysis metadata to Supabase (task 5.2.2)
+                total_duration = time.time() - analysis_start_time
+                supabase_result = await log_analysis_to_supabase(
+                    request_id=request_id,
+                    original_filename=filename,
+                    status=status,
+                    file_size=file_size,
+                    file_type=content_type or file_extension,
+                    employee_count=employee_count,
+                    total_violations=total_violations,
+                    total_hours=total_hours,
+                    overtime_cost=overtime_cost,
+                    processing_time_seconds=total_duration
+                )
+                
+                if supabase_result["success"]:
+                    request_logger.info(f"Analysis metadata logged to Supabase successfully")
+                else:
+                    request_logger.warning(f"Failed to log analysis metadata to Supabase: {supabase_result.get('error', 'Unknown error')}")
+                
+            except Exception as save_error:
+                request_logger.warning(f"Failed to save report to database: {save_error}")
+                log_database_operation(
+                    request_logger, "INSERT", "saved_reports", False, request_id, str(save_error)
+                )
+                # Log database error but continue - don't fail the analysis if saving fails
+                # The analysis was successful, we just couldn't save it
             
+            # Log overall performance metrics
+            total_duration = time.time() - analysis_start_time
+            log_performance_metric(
+                request_logger, "complete_analysis", total_duration,
+                {
+                    "parsing_time": parsing_duration,
+                    "compliance_time": compliance_duration,
+                    "events_processed": events_found,
+                    "violations_found": len(all_violations),
+                    "employees_analyzed": len(employee_summaries)
+                }
+            )
+            
+            request_logger.info(f"Analysis completed successfully | Status: {status}")
             return report
             
         except Exception as e:
-            error_report = FinalAnalysisReport(
+            compliance_duration = time.time() - compliance_start_time
+            request_logger.error(f"Compliance analysis failed: {str(e)}")
+            
+            # Log compliance analysis failure to Supabase (task 5.2.2)
+            total_duration = time.time() - analysis_start_time
+            supabase_result = await log_analysis_to_supabase(
                 request_id=request_id,
                 original_filename=filename,
                 status="error_analysis_failed",
-                status_message=f"Failed to complete compliance analysis: {str(e)}",
-                parsing_issues_summary=llm_output.parsing_issues or []
+                file_size=file_size,
+                file_type=content_type or file_extension,
+                processing_time_seconds=total_duration,
+                error_message=f"Compliance analysis failed: {str(e)}"
             )
-            # Return 500 for internal analysis errors
-            raise HTTPException(status_code=500, detail=error_report.model_dump())
+            
+            # Use standardized error handling (task 5.3)
+            compliance_error = ComplianceAnalysisError(
+                message=f"Failed to complete compliance analysis: {str(e)}"
+            )
+            raise ErrorHandler.create_http_exception(compliance_error, request_id)
     
     except HTTPException:
-        # Re-raise HTTPExceptions as-is (don't convert to 500 errors)
+        # Re-raise HTTPExceptions from error handling (already standardized)
+        total_duration = time.time() - analysis_start_time
+        log_performance_metric(request_logger, "failed_analysis", total_duration)
         raise
     except Exception as e:
-        # Catch-all for unexpected errors
-        raise HTTPException(
-            status_code=500,
-            detail=f"Internal server error during timesheet analysis: {str(e)}"
-        )
-
+        # Catch-all for unexpected errors (task 5.3)
+        total_duration = time.time() - analysis_start_time
+        log_performance_metric(request_logger, "error_analysis", total_duration)
+        request_logger.error(f"Unexpected error during analysis: {str(e)}")
+        
+        # Use the centralized error handler for unexpected errors
+        raise ErrorHandler.handle_unexpected_error(e, "timesheet_analysis", request_id)
 
 def _generate_overall_report_summary(
     kpis: any,

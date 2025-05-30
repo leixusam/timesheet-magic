@@ -1,0 +1,35 @@
+2025-05-29 16:47:21 | INFO     | timesheet | setup_logging:170 | Logging configured - Level: INFO, File logging: True
+2025-05-29 16:47:21 | INFO     | timesheet | setup_logging:170 | Logging configured - Level: INFO, File logging: True
+2025-05-29 16:48:22 | INFO     | timesheet | setup_logging:170 | Logging configured - Level: INFO, File logging: True
+2025-05-29 16:48:22 | INFO     | timesheet | setup_logging:170 | Logging configured - Level: INFO, File logging: True
+2025-05-29 16:48:48 | INFO     | timesheet | setup_logging:170 | Logging configured - Level: INFO, File logging: True
+2025-05-29 16:48:48 | INFO     | timesheet | setup_logging:170 | Logging configured - Level: INFO, File logging: True
+2025-05-29 16:50:30 | INFO     | timesheet | setup_logging:170 | Logging configured - Level: INFO, File logging: True
+2025-05-29 16:50:30 | INFO     | timesheet.test | <module>:1 | Logging test successful
+2025-05-29 16:51:22 | INFO     | timesheet | setup_logging:170 | Logging configured - Level: INFO, File logging: True
+2025-05-29 16:51:22 | INFO     | timesheet.analysis | log_analysis_start:203 | [request_id=test-456] Analysis started | Request ID: test-456 | File: sample.csv | Size: 2,048 bytes | MIME: text/csv | Extension: csv
+2025-05-29 16:52:09 | INFO     | timesheet | setup_logging:170 | Logging configured - Level: INFO, File logging: True
+2025-05-29 16:52:09 | INFO     | timesheet.test | test_logging_implementation:38 | Basic logging test - this should appear in console and file
+2025-05-29 16:52:09 | WARNING  | timesheet.test | test_logging_implementation:40 | Warning message test
+2025-05-29 16:52:09 | ERROR    | timesheet.test | test_logging_implementation:41 | Error message test
+2025-05-29 16:52:09 | INFO     | timesheet.analysis | log_analysis_start:203 | [request_id=test-1748562729] Analysis started | Request ID: test-1748562729 | File: sample_timesheet.csv | Size: 4,096 bytes | MIME: text/csv | Extension: csv
+2025-05-29 16:52:09 | INFO     | timesheet.analysis | log_parsing_result:224 | [request_id=test-1748562729] Parsing SUCCESS | Request ID: test-1748562729 | File: sample_timesheet.csv | Events: 25 | Time: 3.20s
+2025-05-29 16:52:09 | WARNING  | timesheet.analysis | log_parsing_result:232 | [request_id=test-1748562729] Parsing issue | Request ID: test-1748562729 | Issue: Minor formatting issue in row 15
+2025-05-29 16:52:09 | INFO     | timesheet.analysis | log_compliance_analysis:247 | [request_id=test-1748562729] Compliance analysis completed | Request ID: test-1748562729 | Violations: 8 | Employees: 12 | Time: 1.80s
+2025-05-29 16:52:09 | INFO     | timesheet.llm | log_llm_response:282 | [request_id=test-1748562729] LLM response SUCCESS | Request ID: test-1748562729 | Time: 4.50s | Type: function_call
+2025-05-29 16:52:09 | INFO     | timesheet.analysis | log_database_operation:303 | [request_id=test-1748562729] Database INSERT SUCCESS | Table: saved_reports | ID: test-1748562729
+2025-05-29 16:52:09 | INFO     | timesheet.analysis | log_database_operation:303 | [request_id=test-1748562729] Database INSERT FAILED | Table: leads
+2025-05-29 16:52:09 | ERROR    | timesheet.analysis | log_database_operation:309 | [request_id=test-1748562729] Database error | Operation: INSERT | Table: leads | Error: Connection timeout
+2025-05-29 16:52:09 | INFO     | timesheet.analysis | log_performance_metric:324 | [request_id=test-1748562729] Performance | complete_analysis | Duration: 12.70s | parsing_time: 3.2 | compliance_time: 1.8 | events_processed: 25 | violations_found: 8 | employees_analyzed: 12
+2025-05-29 17:01:15 | INFO     | timesheet | setup_logging:170 | Logging configured - Level: INFO, File logging: True
+2025-05-29 17:01:15 | WARNING  | timesheet.supabase | __init__:34 | Supabase not configured. Set SUPABASE_URL and SUPABASE_SERVICE_KEY environment variables to enable Supabase integration.
+2025-05-29 17:01:15 | INFO     | timesheet.supabase | __init__:85 | Supabase client not initialized - missing configuration
+2025-05-29 17:01:15 | WARNING  | timesheet.supabase | log_lead_information:113 | [request_id=test-20250529-170115] Supabase client not available
+2025-05-29 17:01:15 | INFO     | timesheet.supabase | log_database_operation:303 | [request_id=test-20250529-170115] Database INSERT FAILED | Table: leads
+2025-05-29 17:01:15 | ERROR    | timesheet.supabase | log_database_operation:309 | [request_id=test-20250529-170115] Database error | Operation: INSERT | Table: leads | Error: Supabase client not available
+2025-05-29 17:01:15 | WARNING  | timesheet.supabase | log_analysis_metadata:200 | [request_id=test-20250529-170115] Supabase client not available
+2025-05-29 17:01:15 | INFO     | timesheet.supabase | log_database_operation:303 | [request_id=test-20250529-170115] Database INSERT FAILED | Table: analysis_metadata
+2025-05-29 17:01:15 | ERROR    | timesheet.supabase | log_database_operation:309 | [request_id=test-20250529-170115] Database error | Operation: INSERT | Table: analysis_metadata | Error: Supabase client not available
+2025-05-29 17:01:15 | WARNING  | timesheet.supabase | log_analysis_metadata:200 | [request_id=error-test-20250529-170115] Supabase client not available
+2025-05-29 17:01:15 | INFO     | timesheet.supabase | log_database_operation:303 | [request_id=error-test-20250529-170115] Database INSERT FAILED | Table: analysis_metadata
+2025-05-29 17:01:15 | ERROR    | timesheet.supabase | log_database_operation:309 | [request_id=error-test-20250529-170115] Database error | Operation: INSERT | Table: analysis_metadata | Error: Supabase client not available

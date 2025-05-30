@@ -1,0 +1,9 @@
+2025-05-29 16:51:22 | INFO     | timesheet.analysis | log_analysis_start:203 | [request_id=test-456] Analysis started | Request ID: test-456 | File: sample.csv | Size: 2,048 bytes | MIME: text/csv | Extension: csv
+2025-05-29 16:52:09 | INFO     | timesheet.analysis | log_analysis_start:203 | [request_id=test-1748562729] Analysis started | Request ID: test-1748562729 | File: sample_timesheet.csv | Size: 4,096 bytes | MIME: text/csv | Extension: csv
+2025-05-29 16:52:09 | INFO     | timesheet.analysis | log_parsing_result:224 | [request_id=test-1748562729] Parsing SUCCESS | Request ID: test-1748562729 | File: sample_timesheet.csv | Events: 25 | Time: 3.20s
+2025-05-29 16:52:09 | WARNING  | timesheet.analysis | log_parsing_result:232 | [request_id=test-1748562729] Parsing issue | Request ID: test-1748562729 | Issue: Minor formatting issue in row 15
+2025-05-29 16:52:09 | INFO     | timesheet.analysis | log_compliance_analysis:247 | [request_id=test-1748562729] Compliance analysis completed | Request ID: test-1748562729 | Violations: 8 | Employees: 12 | Time: 1.80s
+2025-05-29 16:52:09 | INFO     | timesheet.analysis | log_database_operation:303 | [request_id=test-1748562729] Database INSERT SUCCESS | Table: saved_reports | ID: test-1748562729
+2025-05-29 16:52:09 | INFO     | timesheet.analysis | log_database_operation:303 | [request_id=test-1748562729] Database INSERT FAILED | Table: leads
+2025-05-29 16:52:09 | ERROR    | timesheet.analysis | log_database_operation:309 | [request_id=test-1748562729] Database error | Operation: INSERT | Table: leads | Error: Connection timeout
+2025-05-29 16:52:09 | INFO     | timesheet.analysis | log_performance_metric:324 | [request_id=test-1748562729] Performance | complete_analysis | Duration: 12.70s | parsing_time: 3.2 | compliance_time: 1.8 | events_processed: 25 | violations_found: 8 | employees_analyzed: 12

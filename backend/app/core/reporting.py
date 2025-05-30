@@ -15,7 +15,7 @@ Task 3.5.2: Function to generate data for Staffing Density Heat-Map (dynamic per
 
 from typing import List, Dict, Optional, Tuple, Any
 from datetime import datetime, date, timedelta
-from collections import defaultdict
+from collections import defaultdict, Counter
 from app.models.schemas import (
     LLMParsedPunchEvent, 
     ReportKPIs, 
@@ -29,8 +29,13 @@ from app.core.compliance_rules import (
     determine_employee_hourly_wages,
     calculate_total_labor_costs,
     calculate_violation_costs,
-    generate_wage_data_source_note
+    generate_wage_data_source_note,
+    get_all_compliance_violations
 )
+from app.core.logging_config import get_logger
+
+# Initialize logger for this module
+logger = get_logger("reporting")
 
 
 def calculate_kpi_tiles_data(
@@ -442,81 +447,31 @@ def _count_employees_working_at_hour(
 
 def compile_general_compliance_violations(punch_events: List[LLMParsedPunchEvent]) -> List[ViolationInstance]:
     """
-    Compile a comprehensive list of all compliance violations for the report.
-    
-    This function implements task 3.5.3 by:
-    1. Running all available compliance violation detection functions
-    2. Collecting violations from multiple categories (meal breaks, rest breaks, overtime)
-    3. Handling duplicate employee detection and consolidation
-    4. Returning a structured list of ViolationInstance objects for frontend display
-    5. Ensuring proper formatting and actionable advice for each violation
+    Compile all compliance violations for the given punch events.
     
     Args:
-        punch_events: List of parsed punch events from LLM processing
+        punch_events: List of parsed punch events from LLM
         
     Returns:
-        List of ViolationInstance objects representing all detected compliance violations
+        List of all violations found across all employees
     """
-    from app.core.compliance_rules import (
-        detect_meal_break_violations,
-        detect_rest_break_violations,
-        detect_daily_overtime_violations,
-        detect_weekly_overtime_violations,
-        detect_duplicate_employees,
-        consolidate_employee_shifts_for_duplicates,
-        detect_consolidated_meal_break_violations,
-        detect_consolidated_rest_break_violations
-    )
-    
-    if not punch_events:
-        return []
-    
-    all_violations = []
-    
     try:
-        # Step 1: Detect potential duplicate employees
-        duplicate_groups = detect_duplicate_employees(punch_events)
+        # Get violations from the comprehensive compliance checking function
+        all_violations = get_all_compliance_violations(punch_events)
         
-        if duplicate_groups:
-            # Step 2: Use consolidated shifts for more accurate violation detection
-            consolidated_shifts, mapping = consolidate_employee_shifts_for_duplicates(punch_events, duplicate_groups)
-            
-            # Detect violations using consolidated data
-            meal_break_violations = detect_consolidated_meal_break_violations(consolidated_shifts)
-            rest_break_violations = detect_consolidated_rest_break_violations(consolidated_shifts)
-            
-            all_violations.extend(meal_break_violations)
-            all_violations.extend(rest_break_violations)
-            
-        else:
-            # Step 2a: No duplicates - use standard violation detection
-            meal_break_violations = detect_meal_break_violations(punch_events)
-            rest_break_violations = detect_rest_break_violations(punch_events)
-            
-            all_violations.extend(meal_break_violations)
-            all_violations.extend(rest_break_violations)
+        # Log compliance checking results
+        logger.info(f"Compliance check completed | Violations found: {len(all_violations)}")
         
-        # Step 3: Detect overtime violations (these work with original events)
-        daily_overtime_violations = detect_daily_overtime_violations(punch_events)
-        weekly_overtime_violations = detect_weekly_overtime_violations(punch_events)
-        
-        all_violations.extend(daily_overtime_violations)
-        all_violations.extend(weekly_overtime_violations)
-        
-        # Step 4: Sort violations by date and employee for consistent reporting
-        all_violations.sort(key=lambda v: (v.date_of_violation, v.employee_identifier, v.rule_id))
-        
-        # Step 5: Add generic actionable advice if not already present
-        for violation in all_violations:
-            if not violation.suggested_action_generic or violation.suggested_action_generic == "":
-                violation.suggested_action_generic = _get_generic_actionable_advice(violation.rule_id)
+        if all_violations:
+            violation_types = Counter(v.violation_type for v in all_violations)
+            logger.debug(f"Violation breakdown: {dict(violation_types)}")
         
         return all_violations
         
     except Exception as e:
         # If violation detection fails, return empty list with error logged
         # In production, this should be logged to monitoring system
-        print(f"Error detecting compliance violations: {e}")
+        logger.error(f"Error detecting compliance violations: {e}")
         return []
 
 
