@@ -7,3 +7,9 @@
 2025-05-29 16:52:09 | INFO     | timesheet.analysis | log_database_operation:303 | [request_id=test-1748562729] Database INSERT FAILED | Table: leads
 2025-05-29 16:52:09 | ERROR    | timesheet.analysis | log_database_operation:309 | [request_id=test-1748562729] Database error | Operation: INSERT | Table: leads | Error: Connection timeout
 2025-05-29 16:52:09 | INFO     | timesheet.analysis | log_performance_metric:324 | [request_id=test-1748562729] Performance | complete_analysis | Duration: 12.70s | parsing_time: 3.2 | compliance_time: 1.8 | events_processed: 25 | violations_found: 8 | employees_analyzed: 12
+2025-05-29 19:59:38 | INFO     | timesheet.analysis | submit_lead_data:75 | [request_id=api_test_1748573978] Lead submission started for manager: Test Manager API
+2025-05-29 19:59:38 | WARNING  | timesheet.analysis | submit_lead_data:81 | [request_id=api_test_1748573978] Analysis report not found for ID: api_test_1748573978
+2025-05-29 20:00:15 | INFO     | timesheet.analysis | submit_lead_data:75 | [request_id=test_analysis_1748574015] Lead submission started for manager: Test Manager API Full
+2025-05-29 20:00:15 | INFO     | timesheet.analysis | submit_lead_data:115 | [request_id=test_analysis_1748574015] Lead submitted successfully | Manager: Test Manager API Full | Email: apifulltest@example.com | Store: Test Store API Full | Lead ID: 6c3f00ce-8b48-4ca3-8463-e0f0b770d51b
+2025-05-29 20:00:15 | INFO     | timesheet.analysis | log_database_operation:303 | [request_id=test_analysis_1748574015] Database INSERT SUCCESS | Table: leads | ID: 6c3f00ce-8b48-4ca3-8463-e0f0b770d51b
+2025-05-29 20:00:16 | INFO     | timesheet.analysis | submit_lead_data:137 | [request_id=test_analysis_1748574015] Lead data also logged to Supabase successfully

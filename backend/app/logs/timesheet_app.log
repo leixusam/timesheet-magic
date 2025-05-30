@@ -50,3 +50,23 @@
 2025-05-29 18:43:08 | INFO     | timesheet | setup_logging:170 | Logging configured - Level: INFO, File logging: True
 2025-05-29 19:08:52 | INFO     | timesheet | setup_logging:170 | Logging configured - Level: INFO, File logging: True
 2025-05-29 19:12:01 | INFO     | timesheet | setup_logging:170 | Logging configured - Level: INFO, File logging: True
+2025-05-29 19:55:04 | INFO     | timesheet | setup_logging:170 | Logging configured - Level: INFO, File logging: True
+2025-05-29 19:57:37 | INFO     | timesheet | setup_logging:170 | Logging configured - Level: INFO, File logging: True
+2025-05-29 19:59:25 | INFO     | timesheet | setup_logging:170 | Logging configured - Level: INFO, File logging: True
+2025-05-29 19:59:25 | INFO     | timesheet.main | <module>:20 | Database tables created/verified
+2025-05-29 19:59:25 | INFO     | timesheet.main | <module>:68 | Time Sheet Magic API started successfully
+2025-05-29 19:59:25 | INFO     | timesheet.main | <module>:69 | Registered endpoints: /api/analyze, /api/submit-lead, /api/reports/*
+2025-05-29 19:59:25 | INFO     | timesheet.main | <module>:70 | Global error handlers registered for standardized error responses
+2025-05-29 19:59:38 | INFO     | timesheet.analysis | submit_lead_data:75 | [request_id=api_test_1748573978] Lead submission started for manager: Test Manager API
+2025-05-29 19:59:38 | WARNING  | timesheet.analysis | submit_lead_data:81 | [request_id=api_test_1748573978] Analysis report not found for ID: api_test_1748573978
+2025-05-29 19:59:38 | INFO     | timesheet.error_handlers | create_http_exception:280 | [request_id=api_test_1748573978] Error ANALYSIS_NOT_FOUND: Analysis report not found for the provided ID
+2025-05-29 20:00:15 | INFO     | timesheet.analysis | submit_lead_data:75 | [request_id=test_analysis_1748574015] Lead submission started for manager: Test Manager API Full
+2025-05-29 20:00:15 | INFO     | timesheet.analysis | submit_lead_data:115 | [request_id=test_analysis_1748574015] Lead submitted successfully | Manager: Test Manager API Full | Email: apifulltest@example.com | Store: Test Store API Full | Lead ID: 6c3f00ce-8b48-4ca3-8463-e0f0b770d51b
+2025-05-29 20:00:15 | INFO     | timesheet.analysis | log_database_operation:303 | [request_id=test_analysis_1748574015] Database INSERT SUCCESS | Table: leads | ID: 6c3f00ce-8b48-4ca3-8463-e0f0b770d51b
+2025-05-29 20:00:15 | INFO     | timesheet.supabase | __init__:34 | Supabase URL: SET
+2025-05-29 20:00:15 | INFO     | timesheet.supabase | __init__:35 | Supabase Key: SET
+2025-05-29 20:00:15 | INFO     | timesheet.supabase | __init__:36 | Supabase enabled: True
+2025-05-29 20:00:15 | INFO     | timesheet.supabase | __init__:85 | Supabase client initialized successfully
+2025-05-29 20:00:16 | INFO     | timesheet.supabase | log_lead_information:146 | [request_id=test_analysis_1748574015] Lead successfully logged to Supabase | Manager: Test Manager API Full | Email: apifulltest@example.com | Store: Test Store API Full | Lead ID: 6786538b-e1e0-46a4-ad1e-c86cad509619
+2025-05-29 20:00:16 | INFO     | timesheet.supabase | log_database_operation:303 | [request_id=test_analysis_1748574015] Database INSERT SUCCESS | Table: leads | ID: 6786538b-e1e0-46a4-ad1e-c86cad509619
+2025-05-29 20:00:16 | INFO     | timesheet.analysis | submit_lead_data:137 | [request_id=test_analysis_1748574015] Lead data also logged to Supabase successfully

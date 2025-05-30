@@ -30,6 +30,11 @@ class SupabaseConfig:
         self.supabase_key = os.getenv("SUPABASE_SERVICE_KEY") or os.getenv("SUPABASE_ANON_KEY")
         self.enabled = bool(self.supabase_url and self.supabase_key)
         
+        # Debug logging to see what we're getting
+        logger.info(f"Supabase URL: {'SET' if self.supabase_url else 'MISSING'}")
+        logger.info(f"Supabase Key: {'SET' if self.supabase_key else 'MISSING'}")
+        logger.info(f"Supabase enabled: {self.enabled}")
+        
         if not self.enabled:
             logger.warning(
                 "Supabase not configured. Set SUPABASE_URL and SUPABASE_SERVICE_KEY "
