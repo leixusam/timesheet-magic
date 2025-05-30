@@ -1,0 +1,9 @@
+{
+  "name": "timesheet-magic-frontend",
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "/api/:path*"
+    }
+  ]
+} 
