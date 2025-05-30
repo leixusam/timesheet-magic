@@ -47,6 +47,8 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
+        "https://shiftiq.us",  # New production domain
+        "https://www.shiftiq.us",  # Include www subdomain
         "https://timesheet-magic.vercel.app",
         "https://*.vercel.app",  # Allow any Vercel preview deployments
         "http://localhost:3000",  # Local development
