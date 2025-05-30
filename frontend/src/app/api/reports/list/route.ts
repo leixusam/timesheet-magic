@@ -6,7 +6,7 @@ export async function GET(request: NextRequest) {
     const skip = searchParams.get('skip') || '0';
     const limit = searchParams.get('limit') || '50';
     
-    const backendUrl = process.env.BACKEND_URL || 'http://localhost:8001';
+    const backendUrl = process.env.BACKEND_URL || 'https://timesheet-magic-backend.fly.dev';
     const response = await fetch(`${backendUrl}/reports/list?skip=${skip}&limit=${limit}`);
     
     if (!response.ok) {

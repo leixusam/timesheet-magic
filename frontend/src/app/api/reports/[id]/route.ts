@@ -10,7 +10,7 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    const backendUrl = process.env.BACKEND_URL || 'http://localhost:8001';
+    const backendUrl = process.env.BACKEND_URL || 'https://timesheet-magic-backend.fly.dev';
     const response = await fetch(`${backendUrl}/reports/${id}`);
     
     if (!response.ok) {
@@ -40,7 +40,7 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
-    const backendUrl = process.env.BACKEND_URL || 'http://localhost:8001';
+    const backendUrl = process.env.BACKEND_URL || 'https://timesheet-magic-backend.fly.dev';
     const response = await fetch(`${backendUrl}/reports/${id}`, {
       method: 'DELETE',
     });
