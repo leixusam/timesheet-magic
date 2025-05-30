@@ -24,7 +24,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the rest of the backend application code into the container at /app
 COPY ./app ./app
 
-# Copy the llm_utils directory (via symbolic link to avoid duplication)
+# Copy the llm_utils directory (LLM processing utilities)
 COPY ./llm_utils ./llm_utils
 
 # Make port 80 available to the world outside this container
