@@ -45,17 +45,21 @@ def load_config() -> Dict[str, Any]:
         Dictionary containing configuration settings
     """
     try:
-        # Look for config.json in the project root (parent of backend)
-        config_path = os.path.join(parent_dir, "config.json")
+        # Look for config.json in the backend directory (where it actually is)
+        config_path = os.path.join(backend_dir, "config.json")
         if not os.path.exists(config_path):
-            # Fallback to looking in current directory
+            # Fallback to looking in project root
+            config_path = os.path.join(parent_dir, "config.json")
+        if not os.path.exists(config_path):
+            # Final fallback to current working directory
             config_path = os.path.join(os.getcwd(), "config.json")
         
         if os.path.exists(config_path):
+            logger.debug(f"Loading config from: {config_path}")
             with open(config_path, 'r') as f:
                 return json.load(f)
         else:
-            logger.debug(f"Config file not found at {config_path}, using defaults")
+            logger.debug(f"Config file not found at any expected location, using defaults")
             return {}
     except Exception as e:
         logger.debug(f"Error loading config: {e}, using defaults")
@@ -63,7 +67,7 @@ def load_config() -> Dict[str, Any]:
 
 def get_function_calling_model() -> str:
     """
-    Get the function calling model from config, with fallbacks.
+    Get the function calling model name from config or environment.
     
     Returns:
         Model name to use for function calling
@@ -76,16 +80,18 @@ def get_function_calling_model() -> str:
     
     # Load from config file
     config = load_config()
+    
+    # Check for function_calling_model directly under google
     function_calling_model = config.get("google", {}).get("function_calling_model")
     
     if function_calling_model:
         logger.debug(f"Using function calling model from config: {function_calling_model}")
         return function_calling_model
     
-    # Final fallback
-    fallback_model = "gemini-2.0-flash-exp"
-    logger.debug(f"No config found, using fallback model: {fallback_model}")
-    return fallback_model
+    # Fallback to default
+    default_model = "models/gemini-2.0-flash"
+    logger.debug(f"No config found, using fallback model: {default_model}")
+    return default_model
 
 def pydantic_to_gemini_tool_dict(pydantic_model_cls, tool_name: str, tool_description: str) -> Dict[str, Any]:
     """

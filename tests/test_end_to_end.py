@@ -13,12 +13,13 @@ from datetime import datetime
 
 # Add the backend app to Python path
 current_dir = Path(__file__).parent
-backend_dir = current_dir / "backend" / "app"
+backend_dir = current_dir / "backend"
 sys.path.insert(0, str(backend_dir))
+sys.path.insert(0, str(current_dir))
 
-from core.llm_processing import parse_file_to_structured_data
-from core.compliance_rules import get_all_compliance_violations, detect_compliance_violations_with_costs
-from models.schemas import LLMProcessingOutput
+from app.core.llm_processing import parse_file_to_structured_data
+from app.core.compliance_rules import get_all_compliance_violations, detect_compliance_violations_with_costs
+from app.models.schemas import LLMProcessingOutput
 
 async def test_csv_end_to_end():
     """Test the complete pipeline with the 8.05-short.csv file"""
@@ -27,7 +28,7 @@ async def test_csv_end_to_end():
     print("=" * 50)
     
     # Path to test file
-    csv_file_path = backend_dir / "tests" / "core" / "8.05-short.csv"
+    csv_file_path = current_dir / "sample_data" / "8.05-short.csv"
     
     if not csv_file_path.exists():
         print(f"❌ Test file not found: {csv_file_path}")

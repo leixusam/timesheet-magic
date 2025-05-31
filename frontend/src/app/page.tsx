@@ -6,6 +6,7 @@ import SimpleUploadDropzone from '@/components/SimpleUploadDropzone';
 import Header from '@/components/ui/Header';
 import Footer from '@/components/ui/Footer';
 import FAQAccordion from '@/components/ui/FAQAccordion';
+import { CafeHeroImage, KitchenStaffImage, EmployeeTimesheetImage, ComplianceChecklistImage } from '@/components/OptimizedImages';
 import analytics from '@/utils/analytics';
 
 export default function Home() {
@@ -50,12 +51,10 @@ export default function Home() {
           <div className="block lg:hidden relative" style={{ height: '75vh' }}>
             {/* Mobile Background Image */}
             <div className="absolute inset-0 w-full h-full">
-              <Image 
-                src="/cafe.jpg" 
+              <CafeHeroImage 
                 alt="Professional cafe environment" 
-                fill
-                className="object-cover" 
-                priority 
+                className="w-full h-full object-cover"
+                priority={true}
                 sizes="100vw"
               />
               <div className="absolute inset-0 bg-gradient-to-b from-black/70 via-black/50 to-black/30"></div>
@@ -90,12 +89,10 @@ export default function Home() {
           <div className="hidden lg:block relative" style={{ height: '75vh' }}>
             {/* Desktop Background Image */}
             <div className="absolute inset-0 w-full h-full">
-              <Image 
-                src="/cafe.jpg" 
+              <CafeHeroImage 
                 alt="Professional cafe environment" 
-                fill
-                className="object-cover" 
-                priority 
+                className="w-full h-full object-cover"
+                priority={true}
                 sizes="100vw"
               />
               <div className="absolute inset-0 bg-gradient-to-b from-black/70 via-black/50 to-black/30"></div>
@@ -218,12 +215,10 @@ export default function Home() {
               </div>
               <div className="relative order-1 lg:order-2">
                 <div className="aspect-[4/3] rounded-2xl overflow-hidden bg-gray-100 relative shadow-2xl w-[80vw] lg:w-full mx-auto">
-                  <Image 
-                    src="/nwLx1Cp6tWit8e855xsUwKCQDc.jpg" 
+                  <KitchenStaffImage 
                     alt="Kitchen staff managing orders efficiently" 
                     className="w-full h-full object-cover object-center hover:scale-[1.02] transition-all duration-700"
-                    loading="lazy"
-                    fill
+                    sizes="(max-width: 768px) 80vw, (max-width: 1024px) 50vw, 33vw"
                   />
                 </div>
               </div>
@@ -233,12 +228,10 @@ export default function Home() {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-20 items-center">
               <div className="relative order-1 lg:order-1">
                 <div className="aspect-[4/3] rounded-2xl overflow-hidden bg-gray-100 relative shadow-2xl w-[80vw] lg:w-full mx-auto">
-                  <Image 
-                    src="/awuQBekLugr97gL8uQknRr2tog.jpg" 
+                  <EmployeeTimesheetImage 
                     alt="Employee reviewing accurate timesheet data" 
                     className="w-full h-full object-cover object-center hover:scale-[1.02] transition-all duration-700"
-                    loading="lazy"
-                    fill
+                    sizes="(max-width: 768px) 80vw, (max-width: 1024px) 50vw, 33vw"
                   />
                 </div>
               </div>
@@ -332,12 +325,10 @@ export default function Home() {
               </div>
               <div className="relative order-1 lg:order-2">
                 <div className="aspect-[4/3] rounded-2xl overflow-hidden bg-gray-100 relative shadow-2xl w-[80vw] lg:w-full mx-auto">
-                  <Image 
-                    src="/lU9jqP5P9GHVLS9zK5S3sXL7Y.jpg" 
+                  <ComplianceChecklistImage 
                     alt="Compliance checklist and audit documentation" 
                     className="w-full h-full object-cover object-center hover:scale-[1.02] transition-all duration-700"
-                    loading="lazy"
-                    fill
+                    sizes="(max-width: 768px) 80vw, (max-width: 1024px) 50vw, 33vw"
                   />
                 </div>
               </div>

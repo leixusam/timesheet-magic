@@ -11,12 +11,12 @@ from pathlib import Path
 import json
 from datetime import datetime
 
-# Add the backend app to Python path
+# Add the backend directory to Python path
 current_dir = Path(__file__).parent
-backend_dir = current_dir / "backend" / "app"
+backend_dir = current_dir.parent / "backend"
 sys.path.insert(0, str(backend_dir))
 
-from core.llm_processing import parse_file_to_structured_data
+from app.core.llm_processing import parse_file_to_structured_data
 
 # Test different models
 MODELS_TO_TEST = [
@@ -36,7 +36,7 @@ async def test_model(model_name, file_bytes, mime_type, filename):
     
     try:
         # Temporarily override the model configuration
-        config_path = current_dir / "config.json"
+        config_path = backend_dir / "config.json"
         with open(config_path, 'r') as f:
             original_config = json.load(f)
         
@@ -53,8 +53,7 @@ async def test_model(model_name, file_bytes, mime_type, filename):
         result = await parse_file_to_structured_data(
             file_bytes=file_bytes,
             mime_type=mime_type,
-            original_filename=filename,
-            debug_dir=str(debug_dir)
+            original_filename=filename
         )
         
         print(f"✅ SUCCESS with {model_name}!")
@@ -85,7 +84,7 @@ async def main():
     print("=" * 50)
     
     # Load test file
-    csv_file_path = backend_dir / "tests" / "core" / "8.05-short.csv"
+    csv_file_path = current_dir.parent / "sample_data" / "8.05-short.csv"
     
     if not csv_file_path.exists():
         print(f"❌ Test file not found: {csv_file_path}")

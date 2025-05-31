@@ -48,7 +48,7 @@ class TestSupabaseConfig:
         with patch.dict('os.environ', {
             'SUPABASE_URL': 'https://test.supabase.co',
             'SUPABASE_ANON_KEY': 'test-anon-key'
-        }):
+        }, clear=True):  # Clear all env vars and only set the ones we specify
             config = SupabaseConfig()
             assert config.supabase_url == 'https://test.supabase.co'
             assert config.supabase_key == 'test-anon-key'

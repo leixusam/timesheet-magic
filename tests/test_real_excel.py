@@ -13,10 +13,10 @@ from datetime import datetime as dt
 
 # Add the backend app to Python path
 current_dir = Path(__file__).parent
-backend_dir = current_dir / "backend" / "app"
+backend_dir = current_dir / "backend"
 sys.path.insert(0, str(backend_dir))
 
-from core.llm_processing import parse_file_to_structured_data
+from app.core.llm_processing import parse_file_to_structured_data
 
 async def test_real_excel_file():
     """Test LLM processing with the real Excel file"""

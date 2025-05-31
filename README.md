@@ -19,32 +19,50 @@ Time Sheet Magic processes various timesheet formats (CSV, Excel, PDF, images) u
 ├── backend/                    # FastAPI backend
 │   ├── app/
 │   │   ├── api/endpoints/      # API endpoints
-│   │   │   ├── core/               # Core business logic
-│   │   │   │   ├── llm_processing.py      # LLM integration
-│   │   │   │   ├── compliance_rules.py    # Labor compliance logic
-│   │   │   │   └── reporting.py           # KPI and report generation
-│   │   │   ├── models/schemas.py   # Pydantic data models
-│   │   │   └── tests/              # Unit tests (pytest)
-│   │   ├── requirements.txt
-│   │   └── Dockerfile
-│   ├── frontend/                   # Next.js frontend
-│   │   ├── src/
-│   │   │   ├── app/               # Next.js app router
-│   │   │   ├── components/        # React components
-│   │   │   └── hooks/             # Custom React hooks
-│   │   ├── package.json
-│   │   └── Dockerfile
-│   ├── tests/                      # Integration tests
-│   │   ├── README.md              # Test documentation
-│   │   ├── run_tests.py           # Test runner
-│   │   ├── test_end_to_end.py     # Full pipeline test
-│   │   ├── test_compliance_only.py # Isolated compliance test
-│   │   ├── test_kpi_calculation.py # KPI validation (Task 3.5.1)
-│   │   └── [other test files]
-│   ├── llm_utils/                  # LLM utility functions
-│   ├── tasks/                      # Project task documentation
-│   └── debug_runs/                 # Test output and debug data
-└── venv/                       # Python virtual environment
+│   │   ├── core/               # Core business logic
+│   │   │   ├── llm_processing.py      # LLM integration
+│   │   │   ├── compliance_rules.py    # Labor compliance logic
+│   │   │   └── reporting.py           # KPI and report generation
+│   │   ├── models/             # Pydantic data models
+│   │   ├── tests/              # Unit tests (pytest)
+│   │   │   ├── core/           # Core logic tests (no sample data)
+│   │   │   ├── api/            # API endpoint tests
+│   │   │   └── db/             # Database tests
+│   │   └── logs/               # Application logs
+│   ├── llm_utils/              # LLM utility functions
+│   └── venv_local/             # Local virtual environment
+├── frontend/                   # Next.js frontend
+│   ├── src/
+│   │   ├── app/               # Next.js app router
+│   │   ├── components/        # React components
+│   │   └── hooks/             # Custom React hooks
+│   ├── package.json
+│   └── .next/                 # Build output (gitignored)
+├── docs/                       # 📚 Documentation
+│   ├── README.md              # Documentation index
+│   ├── LOCAL_DEV_SETUP.md     # Local development setup
+│   ├── SUPABASE_SETUP.md      # Database configuration
+│   ├── FRONTEND_DEPLOYMENT.md # Deployment guide
+│   └── CLEANUP_SUMMARY.md     # Repository organization
+├── sample_data/                # 📊 ALL test data files (consolidated)
+│   ├── README.md              # Sample data documentation
+│   ├── 8.05 - Time Clock Detail.xlsx     # Full comprehensive (unit tests)
+│   ├── 8.05-short.csv                    # Shortened CSV (unit tests)
+│   ├── 8.05-short.xlsx                   # Shortened Excel (unit tests)
+│   ├── 8.05 - Time Clock Detail 1sheet.xlsx  # Single sheet version
+│   ├── test_deploy.csv                   # Basic deployment test
+│   └── test_upload.csv                   # Upload functionality test
+├── tests/                      # 🧪 Integration tests
+│   ├── README.md              # Test documentation
+│   ├── test_end_to_end.py     # Full pipeline test
+│   ├── test_compliance_only.py # Isolated compliance test
+│   ├── test_kpi_calculation.py # KPI validation
+│   ├── test_immediate_flow.py  # API flow test
+│   └── [other test files]
+├── venv/                       # Main virtual environment
+├── run_tests.py               # 🚀 Unified test runner
+├── requirements.txt           # Python dependencies
+└── .env                       # Environment variables (gitignored)
 ```
 
 ## Features
@@ -64,46 +82,72 @@ Time Sheet Magic processes various timesheet formats (CSV, Excel, PDF, images) u
 
 ## Testing
 
-The project includes comprehensive testing with organized test files in the `tests/` directory.
+The project includes comprehensive testing with a unified test runner.
+
+### Quick Start
+
+```bash
+# Activate virtual environment
+source venv/bin/activate
+
+# Run all tests (unit + integration)
+python run_tests.py
+
+# Run only integration tests
+python run_tests.py --type integration
+
+# Run only unit tests  
+python run_tests.py --type unit
+
+# Run quick validation tests
+python run_tests.py --type quick
+```
 
 ### Test Categories
 
 **🔍 Unit Tests** (in `backend/app/tests/`):
 - `test_reporting.py` - KPI calculation functions
 - `test_llm_processing.py` - LLM processing logic
-- `test_compliance_rules.py` - Compliance detection
+- `test_error_handlers.py` - Error handling
 
 **🔗 Integration Tests** (in `tests/`):
 - `test_end_to_end.py` - Complete pipeline (LLM → Compliance → Costs)
 - `test_compliance_only.py` - Isolated compliance testing
-- `test_kpi_calculation.py` - KPI validation (Task 3.5.1)
+- `test_kpi_calculation.py` - KPI validation
 - `test_real_excel.py` - Excel file processing
+- `test_immediate_flow.py` - API workflow testing
 - `test_simple.py` - Basic functionality
 - `test_final.py` - API timeout diagnostics
-
-### Running Tests
-
-```bash
-# Activate virtual environment
-source venv/bin/activate
-
-# Run all tests with the test runner
-python tests/run_tests.py all
-
-# Run core pipeline tests
-python tests/run_tests.py core
-
-# Run specific test
-python tests/run_tests.py end_to_end
-python tests/run_tests.py kpi_calculation
-
-# Run unit tests
-cd backend && python -m pytest app/tests/ -v
-```
 
 ### Test Dependencies
 
 ⚠️ **Important**: Run `test_end_to_end.py` first to generate baseline data that other tests depend on.
+
+## Documentation
+
+Comprehensive documentation is available in the `docs/` directory:
+- **[📚 Documentation Index](docs/README.md)** - Complete documentation overview
+- **[⚙️ Local Setup](docs/LOCAL_DEV_SETUP.md)** - Development environment setup
+- **[🗄️ Database Setup](docs/SUPABASE_SETUP.md)** - Supabase configuration
+- **[🚀 Deployment](docs/FRONTEND_DEPLOYMENT.md)** - Frontend deployment guide
+
+## Sample Data
+
+All test data files are now consolidated in `sample_data/` for unified access:
+
+### 📊 **Complete Sample Data Collection**
+- **Full Testing Suite**: `8.05 - Time Clock Detail.xlsx` (812KB) - Used by backend unit tests
+- **Fast Testing Suite**: `8.05-short.csv` (5KB) & `8.05-short.xlsx` (777KB) - Used by backend unit tests  
+- **Integration Testing**: `8.05 - Time Clock Detail 1sheet.xlsx` (42KB) - Lightweight version
+- **Basic API Testing**: `test_deploy.csv` & `test_upload.csv` - Minimal data for quick tests
+
+### 🎯 **Testing Strategy**
+- **Unit Tests**: Use `8.05-short.*` files for fast, focused testing
+- **Integration Tests**: Use full `8.05 - Time Clock Detail.xlsx` for comprehensive scenarios  
+- **API Validation**: Use `test_*.csv` files for quick deployment checks
+- **Manual Testing**: Use any file appropriate for your testing scope
+
+See `sample_data/README.md` for detailed usage instructions and file relationships.
 
 ## Setup
 
@@ -158,7 +202,7 @@ cd backend && python -m pytest app/tests/ -v
 
 ```bash
 curl -X POST "http://localhost:8000/api/analyze" \
-  -F "file=@timesheet.csv" \
+  -F "file=@sample_data/test_deploy.csv" \
   -F "lead_data={\"manager_name\":\"John Doe\",\"email\":\"john@example.com\",\"store_name\":\"Store 1\",\"store_address\":\"123 Main St\"}"
 ```
 
@@ -200,7 +244,7 @@ Response includes:
 ## Contributing
 
 1. Check task status in `tasks/tasks-prd-timesheet-magic-mvp.md`
-2. Run existing tests before making changes: `python tests/run_tests.py core`
+2. Run existing tests before making changes: `python run_tests.py --type quick`
 3. Add unit tests for new functions in `backend/app/tests/`
 4. Add integration tests in `tests/` for new workflows
 5. Update documentation and task status

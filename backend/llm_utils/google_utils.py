@@ -13,6 +13,7 @@ print(f"DEBUG: Loaded google.genai Client from: {Client.__module__ if hasattr(Cl
 
 # --- API Key Configuration ---
 API_KEY = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
+print(f"DEBUG: API_KEY loaded - Length: {len(API_KEY) if API_KEY else 'None'}, Full value: {repr(API_KEY)}")
 if API_KEY:
     try:
         # Create client instance with API key
@@ -270,6 +271,18 @@ def get_gemini_response_with_function_calling(
         except genai_errors.APIError as e: # Catch all Google API errors
             error_type = e.__class__.__name__
             error_message_str = str(e).lower()
+            
+            # Add detailed logging for 400 errors to understand what's wrong
+            if "400" in str(e) or "bad request" in error_message_str:
+                print(f"[ERROR] 400 Bad Request details:")
+                print(f"[ERROR] Full error: {str(e)}")
+                print(f"[ERROR] Error type: {error_type}")
+                print(f"[ERROR] Model used: {model_path_for_api}")
+                print(f"[ERROR] Number of tools: {len(tools) if tools else 0}")
+                print(f"[ERROR] Prompt parts count: {len(prompt_parts)}")
+                if prompt_parts:
+                    print(f"[ERROR] First prompt part length: {len(str(prompt_parts[0]))}")
+                return f"Error: Google API 400 Bad Request: {str(e)}"
 
             # Check for non-retryable conditions first based on message content or specific error types if they were available
             if "prompt was blocked" in error_message_str or "blockedprompt" in error_type.lower():

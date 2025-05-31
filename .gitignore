@@ -2,10 +2,15 @@
 __pycache__/
 *.py[cod]
 *$py.class
+*.pyc
+*.pyo
+*.pyd
+.Python
 
 # Virtual environment
 .venv/
 venv/
+venv_local/
 ENV/
 env/
 
@@ -34,4 +39,39 @@ ehthumbs.db
 Thumbs.db
 
 # Debug outputs
-debug_runs/ 
+debug_runs/
+*.log
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.cache
+
+# Node modules (frontend)
+node_modules/
+.next/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Backend specific exclusions
+backend/timesheet_magic_local.db
+backend/app/logs/*.log
+backend/logs/*.log
+
+# Development and build artifacts
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Logs
+logs/
+*.log 

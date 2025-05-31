@@ -36,17 +36,18 @@ Related Files:
 """
 
 import sys
+import os
 from pathlib import Path
 from datetime import datetime, date
 import json
 
-# Add the backend app to Python path
+# Change to backend directory so imports work
 current_dir = Path(__file__).parent
-backend_dir = current_dir / "backend" / "app"
-sys.path.insert(0, str(backend_dir))
+backend_dir = current_dir.parent / "backend"
+os.chdir(backend_dir)
 
-from core.compliance_rules import get_all_compliance_violations, detect_compliance_violations_with_costs
-from models.schemas import LLMParsedPunchEvent
+from app.core.compliance_rules import get_all_compliance_violations, detect_compliance_violations_with_costs
+from app.models.schemas import LLMParsedPunchEvent
 
 def create_test_punch_events():
     """Create test punch events based on the CSV data structure"""

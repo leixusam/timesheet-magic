@@ -6,7 +6,9 @@
     "dev": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "optimize-images": "node scripts/optimize-images.js",
+    "check-image-stats": "node scripts/check-image-stats.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.49.8",

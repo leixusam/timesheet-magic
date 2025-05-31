@@ -39,12 +39,12 @@ Jane Smith,2023-05-01,09:00,18:00
                 # Step 2: Submit lead data immediately
                 print("\n2. Submitting lead data immediately...")
                 lead_data = {
-                    "analysisId": request_id,
-                    "managerName": "Test Manager",
-                    "managerEmail": "test@example.com",
-                    "managerPhone": "555-1234",
-                    "storeName": "Test Store",
-                    "storeAddress": "123 Test St"
+                    "analysis_id": request_id,
+                    "manager_name": "Test Manager",
+                    "email": "test@example.com",
+                    "phone": "555-1234",
+                    "store_name": "Test Store",
+                    "store_address": "123 Test St"
                 }
                 
                 lead_response = requests.post(f"{BASE_URL}/api/submit-lead", 

@@ -41,8 +41,8 @@ from datetime import datetime
 # Add the backend directory to the path
 sys.path.append('backend')
 
-from backend.app.core.reporting import calculate_kpi_tiles_data
-from backend.app.models.schemas import LLMParsedPunchEvent
+from app.core.reporting import calculate_kpi_tiles_data
+from app.models.schemas import LLMParsedPunchEvent
 
 
 def test_kpi_with_existing_data():
