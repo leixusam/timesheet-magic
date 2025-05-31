@@ -33,6 +33,16 @@ export const CafeHeroImage: React.FC<ResponsiveImageProps> = ({
         className={className}
         loading={priority ? "eager" : "lazy"}
         sizes={sizes}
+        style={{
+          position: 'absolute',
+          height: '100%',
+          width: '100%',
+          left: 0,
+          top: 0,
+          right: 0,
+          bottom: 0,
+          objectFit: 'cover'
+        }}
       />
     </picture>
   );
@@ -64,6 +74,16 @@ export const KitchenStaffImage: React.FC<ResponsiveImageProps> = ({
         className={className}
         loading={priority ? "eager" : "lazy"}
         sizes={sizes}
+        style={{
+          position: 'absolute',
+          height: '100%',
+          width: '100%',
+          left: 0,
+          top: 0,
+          right: 0,
+          bottom: 0,
+          objectFit: 'cover'
+        }}
       />
     </picture>
   );
@@ -95,6 +115,16 @@ export const EmployeeTimesheetImage: React.FC<ResponsiveImageProps> = ({
         className={className}
         loading={priority ? "eager" : "lazy"}
         sizes={sizes}
+        style={{
+          position: 'absolute',
+          height: '100%',
+          width: '100%',
+          left: 0,
+          top: 0,
+          right: 0,
+          bottom: 0,
+          objectFit: 'cover'
+        }}
       />
     </picture>
   );
@@ -126,6 +156,16 @@ export const ComplianceChecklistImage: React.FC<ResponsiveImageProps> = ({
         className={className}
         loading={priority ? "eager" : "lazy"}
         sizes={sizes}
+        style={{
+          position: 'absolute',
+          height: '100%',
+          width: '100%',
+          left: 0,
+          top: 0,
+          right: 0,
+          bottom: 0,
+          objectFit: 'cover'
+        }}
       />
     </picture>
   );

@@ -51,12 +51,14 @@ export default function Home() {
           <div className="block lg:hidden relative" style={{ height: '75vh' }}>
             {/* Mobile Background Image */}
             <div className="absolute inset-0 w-full h-full">
-              <CafeHeroImage 
-                alt="Professional cafe environment" 
-                className="w-full h-full object-cover"
-                priority={true}
-                sizes="100vw"
-              />
+              <div className="relative w-full h-full">
+                <CafeHeroImage 
+                  alt="Professional cafe environment" 
+                  className="absolute inset-0 w-full h-full object-cover"
+                  priority={true}
+                  sizes="100vw"
+                />
+              </div>
               <div className="absolute inset-0 bg-gradient-to-b from-black/70 via-black/50 to-black/30"></div>
             </div>
             
@@ -89,12 +91,14 @@ export default function Home() {
           <div className="hidden lg:block relative" style={{ height: '75vh' }}>
             {/* Desktop Background Image */}
             <div className="absolute inset-0 w-full h-full">
-              <CafeHeroImage 
-                alt="Professional cafe environment" 
-                className="w-full h-full object-cover"
-                priority={true}
-                sizes="100vw"
-              />
+              <div className="relative w-full h-full">
+                <CafeHeroImage 
+                  alt="Professional cafe environment" 
+                  className="absolute inset-0 w-full h-full object-cover"
+                  priority={true}
+                  sizes="100vw"
+                />
+              </div>
               <div className="absolute inset-0 bg-gradient-to-b from-black/70 via-black/50 to-black/30"></div>
             </div>
             
@@ -217,7 +221,7 @@ export default function Home() {
                 <div className="aspect-[4/3] rounded-2xl overflow-hidden bg-gray-100 relative shadow-2xl w-[80vw] lg:w-full mx-auto">
                   <KitchenStaffImage 
                     alt="Kitchen staff managing orders efficiently" 
-                    className="w-full h-full object-cover object-center hover:scale-[1.02] transition-all duration-700"
+                    className="absolute inset-0 w-full h-full object-cover object-center hover:scale-[1.02] transition-all duration-700"
                     sizes="(max-width: 768px) 80vw, (max-width: 1024px) 50vw, 33vw"
                   />
                 </div>
@@ -230,7 +234,7 @@ export default function Home() {
                 <div className="aspect-[4/3] rounded-2xl overflow-hidden bg-gray-100 relative shadow-2xl w-[80vw] lg:w-full mx-auto">
                   <EmployeeTimesheetImage 
                     alt="Employee reviewing accurate timesheet data" 
-                    className="w-full h-full object-cover object-center hover:scale-[1.02] transition-all duration-700"
+                    className="absolute inset-0 w-full h-full object-cover object-center hover:scale-[1.02] transition-all duration-700"
                     sizes="(max-width: 768px) 80vw, (max-width: 1024px) 50vw, 33vw"
                   />
                 </div>
@@ -327,7 +331,7 @@ export default function Home() {
                 <div className="aspect-[4/3] rounded-2xl overflow-hidden bg-gray-100 relative shadow-2xl w-[80vw] lg:w-full mx-auto">
                   <ComplianceChecklistImage 
                     alt="Compliance checklist and audit documentation" 
-                    className="w-full h-full object-cover object-center hover:scale-[1.02] transition-all duration-700"
+                    className="absolute inset-0 w-full h-full object-cover object-center hover:scale-[1.02] transition-all duration-700"
                     sizes="(max-width: 768px) 80vw, (max-width: 1024px) 50vw, 33vw"
                   />
                 </div>
