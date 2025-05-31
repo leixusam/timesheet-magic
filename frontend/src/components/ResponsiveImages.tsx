@@ -3,9 +3,15 @@
 
 import React from 'react';
 
+interface ResponsiveImageProps {
+  alt: string;
+  className?: string;
+  sizes?: string;
+  priority?: boolean;
+}
 
 // Responsive image component for cafe.jpg
-export const cafeResponsiveImage = ({ 
+export const cafeResponsiveImage: React.FC<ResponsiveImageProps> = ({ 
   alt, 
   className = "",
   sizes = "(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw",
@@ -28,7 +34,7 @@ export const cafeResponsiveImage = ({
 };
 
 // Responsive image component for nwLx1Cp6tWit8e855xsUwKCQDc.jpg
-export const nwLx1Cp6tWit8e855xsUwKCQDcResponsiveImage = ({ 
+export const nwLx1Cp6tWit8e855xsUwKCQDcResponsiveImage: React.FC<ResponsiveImageProps> = ({ 
   alt, 
   className = "",
   sizes = "(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw",
@@ -51,7 +57,7 @@ export const nwLx1Cp6tWit8e855xsUwKCQDcResponsiveImage = ({
 };
 
 // Responsive image component for awuQBekLugr97gL8uQknRr2tog.jpg
-export const awuQBekLugr97gL8uQknRr2togResponsiveImage = ({ 
+export const awuQBekLugr97gL8uQknRr2togResponsiveImage: React.FC<ResponsiveImageProps> = ({ 
   alt, 
   className = "",
   sizes = "(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw",
@@ -74,7 +80,7 @@ export const awuQBekLugr97gL8uQknRr2togResponsiveImage = ({
 };
 
 // Responsive image component for lU9jqP5P9GHVLS9zK5S3sXL7Y.jpg
-export const lU9jqP5P9GHVLS9zK5S3sXL7YResponsiveImage = ({ 
+export const lU9jqP5P9GHVLS9zK5S3sXL7YResponsiveImage: React.FC<ResponsiveImageProps> = ({ 
   alt, 
   className = "",
   sizes = "(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw",
