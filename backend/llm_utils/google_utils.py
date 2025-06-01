@@ -4,6 +4,7 @@ import os
 import json
 import time # For retry logic
 from typing import List, Dict, Any, Union, Optional # For type hinting
+import asyncio
 
 from google.genai import Client
 from google.genai import types as genai_types
@@ -327,6 +328,156 @@ def get_gemini_response_with_function_calling(
             current_retry += 1
             
     return f"Error: All {max_retries} retries failed for get_gemini_response_with_function_calling."
+
+async def get_gemini_response_with_function_calling_async(
+    prompt_parts: List[Union[str, Dict[str, Any]]],
+    tools: Optional[List[Dict[str, Any]]] = None,
+    model_name_override: Optional[str] = None,
+    max_retries: int = 3,
+    initial_backoff_seconds: float = 1.0,
+    temperature: Optional[float] = None
+) -> Union[Dict[str, Any], str]:
+    """
+    Async version of get_gemini_response_with_function_calling for true parallel processing.
+    
+    This function enables concurrent LLM API calls by using asyncio.sleep for delays
+    and running the blocking API call in a thread pool.
+    """
+    # Load config directly to avoid circular imports
+    import json
+    from pathlib import Path
+    
+    config_path = Path(__file__).parent.parent / "config.json"
+    with open(config_path, 'r') as f:
+        config = json.load(f)
+    
+    if model_name_override:
+        model_name = model_name_override
+    else:
+        model_name = config["google"]["default_model"]
+
+    # Use the module-level client variable that was created at import time
+    if not client:
+        return "Error: GOOGLE_API_KEY or GEMINI_API_KEY not configured or client not created."
+
+    # Model name to API path mapping - we need to add models/ prefix for API path
+    model_path_for_api = f"models/{model_name}" if not model_name.startswith("models/") else model_name
+    print(f"[INFO] Using Gemini model: {model_name} (API path: {model_path_for_api})")
+
+    current_retry = 0
+    
+    while current_retry <= max_retries:
+        try:
+            print(f"[DEBUG] Starting API call attempt {current_retry + 1}/{max_retries + 1}")
+            
+            # Prepare the config and tools (same as sync version)
+            config_obj = None
+            if tools:
+                print(f"[DEBUG] Converting {len(tools)} tool(s) to proper format...")
+                converted_tools = []
+                for i, tool_dict in enumerate(tools):
+                    print(f"[DEBUG] Converting tool {i + 1}: {tool_dict.get('name', 'unknown')}")
+                    func_decl = genai_types.FunctionDeclaration(
+                        name=tool_dict["name"],
+                        description=tool_dict["description"],
+                        parameters=tool_dict["parameters"]
+                    )
+                    tool = genai_types.Tool(function_declarations=[func_decl])
+                    converted_tools.append(tool)
+                    print(f"[DEBUG] Tool {i + 1} converted successfully")
+                
+                config_kwargs = {"tools": converted_tools}
+                if temperature is not None:
+                    config_kwargs["temperature"] = temperature
+                config_obj = genai_types.GenerateContentConfig(**config_kwargs)
+            else:
+                if temperature is not None:
+                    config_obj = genai_types.GenerateContentConfig(temperature=temperature)
+            
+            # Run the blocking API call in a thread pool to avoid blocking the event loop
+            loop = asyncio.get_event_loop()
+            response = await loop.run_in_executor(
+                None,  # Use default thread pool
+                lambda: client.models.generate_content(
+                    model=model_path_for_api,
+                    contents=prompt_parts,
+                    config=config_obj
+                )
+            )
+            
+            print(f"[DEBUG] API call completed successfully")
+            
+            # Process response (same logic as sync version)
+            if response.prompt_feedback and response.prompt_feedback.block_reason:
+                return (f"Error: Prompt was blocked by Google API. Reason: {response.prompt_feedback.block_reason.name}. "
+                        f"Safety ratings: {response.prompt_feedback.safety_ratings if hasattr(response.prompt_feedback, 'safety_ratings') else 'N/A'}")
+
+            # Check for function call
+            if response.candidates and response.candidates[0].content and response.candidates[0].content.parts:
+                for part in response.candidates[0].content.parts:
+                    if part.function_call:
+                        print(f"[DEBUG] Function call found! Returning arguments...")
+                        return dict(part.function_call.args)
+            
+            # Return text response if available
+            if response.text:
+                return response.text
+            
+            # Handle other cases
+            if response.candidates:
+                candidate = response.candidates[0]
+                finish_reason_name = getattr(candidate.finish_reason, 'name', str(candidate.finish_reason))
+                
+                if "MALFORMED_FUNCTION_CALL" in finish_reason_name:
+                    return "Error: MALFORMED_FUNCTION_CALL - The input data is too complex for the AI model to process reliably. Please try with a smaller or simpler file."
+                
+                if candidate.finish_reason not in [genai_types.Candidate.FinishReason.STOP, genai_types.Candidate.FinishReason.MAX_TOKENS]:
+                    detailed_error_msg = f"Error: LLM response was empty or incomplete. Finish Reason: {finish_reason_name}."
+                    if candidate.safety_ratings:
+                         detailed_error_msg += f" Safety Ratings: {[(sr.category.name, sr.probability.name) for sr in candidate.safety_ratings]}."
+                    return detailed_error_msg
+                return ""
+            
+            return "Error: Received an empty response with no candidates from Google Gemini."
+
+        except genai_errors.APIError as e:
+            error_type = e.__class__.__name__
+            error_message_str = str(e).lower()
+            
+            if "400" in str(e) or "bad request" in error_message_str:
+                return f"Error: Google API 400 Bad Request: {str(e)}"
+
+            if "prompt was blocked" in error_message_str or "blockedprompt" in error_type.lower():
+                return f"Error: Google API blocked the prompt: {e}"
+            
+            # Check for retryable conditions
+            is_retryable_heuristic = (
+                "quota" in error_message_str or 
+                "resource exhausted" in error_message_str or 
+                "rate limit" in error_message_str or 
+                "service unavailable" in error_message_str or
+                "deadline exceeded" in error_message_str or
+                "internal server error" in error_message_str
+            )
+
+            if is_retryable_heuristic and current_retry < max_retries:
+                print(f"Retryable API Error ({error_type}) encountered: {e}. Retry {current_retry + 1}/{max_retries}...")
+                backoff_time = (initial_backoff_seconds * (2 ** current_retry)) + (os.urandom(1)[0] / 256.0)
+                print(f"Waiting {backoff_time:.2f} seconds before retrying.")
+                await asyncio.sleep(backoff_time)  # Use async sleep!
+                current_retry += 1
+            else:
+                return f"Google API Error ({error_type}) after {current_retry} retries (or non-retryable): {str(e)}."
+        
+        except Exception as e:
+            print(f"Unexpected non-API error: {e} (Type: {e.__class__.__name__}). Retry {current_retry + 1}/{max_retries}...")
+            if current_retry == max_retries:
+                return f"Error: An unexpected non-API error occurred after {max_retries} retries: {e}"
+            backoff_time = (initial_backoff_seconds * (2 ** current_retry)) + (os.urandom(1)[0] / 256.0)
+            await asyncio.sleep(backoff_time)  # Use async sleep!
+            current_retry += 1
+            
+    return f"Error: All {max_retries} retries failed for get_gemini_response_with_function_calling_async."
 
 # Example of how Pydantic schemas can be converted to Gemini Tool dictionary structure:
 # This helper would typically live in llm_processing.py or a shared schema utilities module.

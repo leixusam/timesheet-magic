@@ -31,6 +31,13 @@ from app.core.error_handlers import (
     LLMComplexityError
 )
 
+# Import two-pass processing system (Task 9.1)
+try:
+    from app.core.llm_processing_two_pass import parse_file_to_structured_data_two_pass
+except ImportError:
+    # Fallback for testing environments
+    parse_file_to_structured_data_two_pass = None
+
 # Load environment variables
 load_dotenv()
 
@@ -184,6 +191,11 @@ def preprocess_excel_to_text(file_bytes: bytes, original_filename: str) -> str:
     """
     Convert Excel file bytes to text format for LLM processing.
     
+    Enhanced for Task 9.6:
+    - Remove row processing limit (process all rows)
+    - Convert Excel to CSV first
+    - If multi-sheet, use first sheet only
+    
     Args:
         file_bytes: Raw Excel file content as bytes
         original_filename: Original filename for context and debugging
@@ -198,17 +210,28 @@ def preprocess_excel_to_text(file_bytes: bytes, original_filename: str) -> str:
         # Load Excel file from bytes
         workbook = openpyxl.load_workbook(io.BytesIO(file_bytes), data_only=True)
         
-        # Get the active sheet (or first sheet)
-        sheet = workbook.active
+        # Task 9.6: Use first sheet only (for multi-sheet files)
+        if len(workbook.worksheets) > 1:
+            logger.info(f"Multi-sheet Excel file detected: {len(workbook.worksheets)} sheets. Using first sheet only: '{workbook.worksheets[0].title}'")
+            sheet = workbook.worksheets[0]  # First sheet
+        else:
+            sheet = workbook.active
         
-        # Convert sheet to clean CSV-like text format, focusing on timesheet data
+        # Load configuration for Excel preprocessing
+        config = load_config()
+        excel_config = config.get("processing", {}).get("excel_preprocessing", {})
+        remove_row_limit = excel_config.get("remove_row_limit", True)
+        convert_to_csv_first = excel_config.get("convert_to_csv_first", True)
+        
+        # Task 9.6: Convert Excel to CSV first - process ALL rows (no limit)
         rows_data = []
         header_found = False
         total_rows_processed = 0
         
-        # Iterate through all rows that have data
+        # Iterate through ALL rows that have data (no limit)
         for row_idx, row in enumerate(sheet.iter_rows(values_only=True), 1):
             total_rows_processed += 1
+            
             # Skip completely empty rows
             if all(cell is None or str(cell).strip() == '' for cell in row):
                 continue
@@ -242,20 +265,38 @@ def preprocess_excel_to_text(file_bytes: bytes, original_filename: str) -> str:
                     ['employee', 'name', 'time', 'date', 'clock', 'in', 'out', 'punch']):
                     header_found = True
         
-        # Limit the data to prevent LLM overload while keeping essential information
-        if len(rows_data) > 200:  # If too many rows, keep header and recent data
-            # Keep first 20 rows (likely headers) and last 150 rows (most recent data)
+        # Task 9.6: Remove row processing limit - keep ALL data
+        original_row_count = len(rows_data)
+        if not remove_row_limit and len(rows_data) > 200:
+            # Legacy behavior: limit rows if config disabled row limit removal
             rows_data = rows_data[:20] + rows_data[-150:]
-            logger.debug(f"Truncated Excel data to prevent LLM overload: keeping 170 most relevant rows out of {total_rows_processed} total rows")
+            logger.warning(f"Row limit applied (legacy mode): keeping 170 most relevant rows out of {original_row_count} total rows")
+        else:
+            # New behavior: process all rows
+            logger.info(f"Processing ALL Excel rows: {original_row_count} data rows from {total_rows_processed} total rows")
         
-        # Create clean, structured text content
-        text_content = f"TIMESHEET DATA from {original_filename}\n"
-        text_content += f"Sheet: {sheet.title}\n"
-        text_content += f"Data rows: {len(rows_data)}\n\n"
-        text_content += "CSV FORMAT:\n"
-        text_content += "\n".join(rows_data)
+        # Task 9.6: Convert to CSV format first, then wrap with metadata
+        if convert_to_csv_first:
+            # Primary output is clean CSV
+            csv_content = "\n".join(rows_data)
+            
+            # Add minimal metadata wrapper
+            text_content = f"TIMESHEET DATA from {original_filename}\n"
+            text_content += f"Sheet: {sheet.title}\n"
+            text_content += f"Data rows: {len(rows_data)} (from {total_rows_processed} total)\n"
+            if len(workbook.worksheets) > 1:
+                text_content += f"Note: Multi-sheet file, using first sheet only\n"
+            text_content += f"\nCSV FORMAT:\n"
+            text_content += csv_content
+        else:
+            # Legacy format
+            text_content = f"TIMESHEET DATA from {original_filename}\n"
+            text_content += f"Sheet: {sheet.title}\n"
+            text_content += f"Data rows: {len(rows_data)}\n\n"
+            text_content += "CSV FORMAT:\n"
+            text_content += "\n".join(rows_data)
         
-        logger.debug(f"Successfully converted Excel file '{original_filename}' to clean text format ({len(rows_data)} rows, {len(text_content)} chars)")
+        logger.info(f"Successfully converted Excel file '{original_filename}' to CSV format ({len(rows_data)} rows, {len(text_content)} chars)")
         
         return text_content
         
@@ -572,6 +613,256 @@ Extract everything systematically - don't miss any employees or any punch events
             message=f"Unexpected error during LLM processing for '{original_filename}': {str(e)}",
             service_name="Google Gemini"
         )
+
+async def parse_file_with_optimal_strategy(
+    file_bytes: bytes,
+    mime_type: str,
+    original_filename: str,
+    debug_dir: Optional[str] = None,
+    enable_two_pass: Optional[bool] = None,
+    force_two_pass: Optional[bool] = None,
+    force_single_pass: Optional[bool] = None,
+    **two_pass_kwargs
+) -> Union[LLMProcessingOutput, Dict[str, Any]]:
+    """
+    Parse a file using the optimal processing strategy (single-pass or two-pass).
+    
+    This is the new main entry point that integrates both processing approaches
+    and automatically chooses the best strategy based on file characteristics
+    and configuration settings.
+    
+    Args:
+        file_bytes: Raw file content as bytes
+        mime_type: MIME type of the file (e.g., 'text/csv', 'application/pdf')
+        original_filename: Original filename for context and debugging
+        debug_dir: Optional directory to save debug information
+        enable_two_pass: Override config setting for two-pass processing
+        force_two_pass: Force two-pass processing regardless of other factors
+        force_single_pass: Force single-pass processing regardless of other factors
+        **two_pass_kwargs: Additional parameters for two-pass processing
+        
+    Returns:
+        LLMProcessingOutput (for single-pass) or Dict[str, Any] (for two-pass)
+        containing parsed punch events and processing metadata
+        
+    Raises:
+        FileValidationError: For unsupported file types or invalid file content
+        ParsingError: For file parsing/decoding failures  
+        LLMServiceError: For LLM processing failures or unexpected errors
+    """
+    start_time = time.time()
+    config = load_config()
+    
+    # Determine processing mode based on configuration and parameters
+    processing_config = config.get("processing", {})
+    two_pass_config = config.get("two_pass", {})
+    
+    # Default values from config
+    enable_two_pass = enable_two_pass if enable_two_pass is not None else processing_config.get("enable_two_pass", True)
+    auto_detect = processing_config.get("auto_detect_two_pass", True)
+    fallback_enabled = processing_config.get("fallback_to_single_pass", True)
+    
+    # Force modes override everything
+    if force_single_pass:
+        logger.info(f"Force single-pass mode enabled for '{original_filename}'")
+        return await parse_file_to_structured_data(file_bytes, mime_type, original_filename, debug_dir)
+    
+    if force_two_pass:
+        logger.info(f"Force two-pass mode enabled for '{original_filename}'")
+        if parse_file_to_structured_data_two_pass is None:
+            raise LLMServiceError(
+                message="Two-pass processing requested but not available",
+                service_name="Two-Pass Processing System"
+            )
+        return await _execute_two_pass_processing(
+            file_bytes, mime_type, original_filename, debug_dir, 
+            config, two_pass_config, **two_pass_kwargs
+        )
+    
+    # If two-pass is disabled, use single-pass
+    if not enable_two_pass:
+        logger.info(f"Two-pass processing disabled, using single-pass for '{original_filename}'")
+        return await parse_file_to_structured_data(file_bytes, mime_type, original_filename, debug_dir)
+    
+    # If two-pass system is not available, fall back to single-pass
+    if parse_file_to_structured_data_two_pass is None:
+        logger.warning(f"Two-pass processing not available, falling back to single-pass for '{original_filename}'")
+        return await parse_file_to_structured_data(file_bytes, mime_type, original_filename, debug_dir)
+    
+    # Auto-detection mode: evaluate file characteristics
+    if auto_detect:
+        try:
+            # Extract text content for analysis (similar to existing preprocessing)
+            text_content = await _extract_text_content(file_bytes, mime_type, original_filename)
+            
+            # Use the two-pass decision engine to determine optimal strategy
+            from app.core.llm_processing_two_pass import _evaluate_two_pass_suitability
+            decision_result = _evaluate_two_pass_suitability(text_content, original_filename)
+            
+            if decision_result['should_use_two_pass']:
+                logger.info(f"Auto-detection recommends two-pass for '{original_filename}': {decision_result['reason']}")
+                try:
+                    return await _execute_two_pass_processing(
+                        file_bytes, mime_type, original_filename, debug_dir,
+                        config, two_pass_config, **two_pass_kwargs
+                    )
+                except Exception as e:
+                    if fallback_enabled:
+                        logger.warning(f"Two-pass failed for '{original_filename}', falling back to single-pass: {str(e)}")
+                        return await parse_file_to_structured_data(file_bytes, mime_type, original_filename, debug_dir)
+                    else:
+                        raise
+            else:
+                logger.info(f"Auto-detection recommends single-pass for '{original_filename}': {decision_result['reason']}")
+                return await parse_file_to_structured_data(file_bytes, mime_type, original_filename, debug_dir)
+                
+        except Exception as e:
+            logger.error(f"Auto-detection failed for '{original_filename}': {str(e)}")
+            if fallback_enabled:
+                logger.info(f"Falling back to single-pass processing for '{original_filename}'")
+                return await parse_file_to_structured_data(file_bytes, mime_type, original_filename, debug_dir)
+            else:
+                raise
+    else:
+        # Two-pass enabled but auto-detection disabled - always use two-pass
+        logger.info(f"Two-pass processing enabled (auto-detect disabled) for '{original_filename}'")
+        try:
+            return await _execute_two_pass_processing(
+                file_bytes, mime_type, original_filename, debug_dir,
+                config, two_pass_config, **two_pass_kwargs
+            )
+        except Exception as e:
+            if fallback_enabled:
+                logger.warning(f"Two-pass failed for '{original_filename}', falling back to single-pass: {str(e)}")
+                return await parse_file_to_structured_data(file_bytes, mime_type, original_filename, debug_dir)
+            else:
+                raise
+
+
+async def _extract_text_content(file_bytes: bytes, mime_type: str, original_filename: str) -> str:
+    """
+    Extract text content from file bytes for decision analysis.
+    
+    This is a simplified version of the text extraction logic used
+    for analyzing file characteristics without full processing.
+    """
+    is_excel = (
+        mime_type in ['application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'] or
+        (original_filename and original_filename.lower().endswith(('.xls', '.xlsx')))
+    )
+    
+    if is_excel:
+        # Extract Excel content
+        excel_text_content = preprocess_excel_to_text(file_bytes, original_filename)
+        if "CSV FORMAT:" in excel_text_content:
+            return excel_text_content.split("CSV FORMAT:")[-1].strip()
+        return excel_text_content
+    elif mime_type and mime_type.startswith('image/'):
+        # For images, return a placeholder - we can't analyze without OCR
+        return f"Image file: {original_filename} ({len(file_bytes)} bytes)"
+    elif mime_type == 'application/pdf':
+        # For PDFs, return a placeholder - we can't analyze without parsing
+        return f"PDF file: {original_filename} ({len(file_bytes)} bytes)"
+    else:
+        # Text-based files
+        try:
+            return file_bytes.decode('utf-8')
+        except UnicodeDecodeError:
+            try:
+                return file_bytes.decode('latin-1')
+            except UnicodeDecodeError:
+                return f"Binary file: {original_filename} ({len(file_bytes)} bytes)"
+
+
+async def _execute_two_pass_processing(
+    file_bytes: bytes,
+    mime_type: str, 
+    original_filename: str,
+    debug_dir: Optional[str],
+    config: Dict[str, Any],
+    two_pass_config: Dict[str, Any],
+    **kwargs
+) -> Dict[str, Any]:
+    """
+    Execute two-pass processing with proper text extraction and parameter handling.
+    """
+    # Extract text content for two-pass processing
+    file_content = await _extract_text_content(file_bytes, mime_type, original_filename)
+    
+    # Prepare two-pass parameters
+    two_pass_params = {
+        'enable_two_pass': True,
+        'force_two_pass': kwargs.get('force_two_pass', False),
+        'batch_size': kwargs.get('batch_size', two_pass_config.get('default_batch_size')),
+        'timeout_per_employee': kwargs.get('timeout_per_employee', two_pass_config.get('timeout_per_employee')),
+        'max_retries': kwargs.get('max_retries', two_pass_config.get('max_retries')),
+        'enable_deduplication': kwargs.get('enable_deduplication', two_pass_config.get('enable_deduplication')),
+        'strict_validation': kwargs.get('strict_validation', two_pass_config.get('strict_validation')),
+        'fallback_to_single_pass': config.get("processing", {}).get("fallback_to_single_pass", True)
+    }
+    
+    # Call two-pass processing
+    result = await parse_file_to_structured_data_two_pass(
+        file_content=file_content,
+        original_filename=original_filename,
+        **two_pass_params
+    )
+    
+    return result
+
+
+def convert_two_pass_to_single_pass_format(two_pass_result: Dict[str, Any]) -> LLMProcessingOutput:
+    """
+    Convert two-pass processing result to single-pass format for backward compatibility.
+    
+    Args:
+        two_pass_result: Result from two-pass processing
+        
+    Returns:
+        LLMProcessingOutput in the format expected by existing code
+    """
+    punch_events = []
+    
+    # Convert two-pass punch events to LLMParsedPunchEvent format
+    for event_data in two_pass_result.get('punch_events', []):
+        if isinstance(event_data, dict):
+            try:
+                # Parse timestamp if it's a string
+                if isinstance(event_data.get("timestamp"), str):
+                    timestamp_str = event_data["timestamp"]
+                    if timestamp_str.endswith('Z'):
+                        from datetime import datetime
+                        timestamp = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+                        event_data["timestamp"] = timestamp
+                
+                # Create LLMParsedPunchEvent
+                punch_event = LLMParsedPunchEvent(**event_data)
+                punch_events.append(punch_event)
+            except Exception as e:
+                logger.warning(f"Failed to convert punch event: {event_data} - Error: {e}")
+                continue
+        else:
+            punch_events.append(event_data)
+    
+    # Extract parsing issues
+    parsing_issues = two_pass_result.get('parsing_issues', [])
+    
+    # Add processing metadata as parsing issues for visibility
+    metadata = two_pass_result.get('processing_metadata', {})
+    if metadata.get('processing_mode') == 'two_pass':
+        processing_info = f"Processed using two-pass mode with {metadata.get('discovered_employees', 0)} employees discovered"
+        parsing_issues.insert(0, processing_info)
+        
+        # Add quality score info if available
+        quality_score = metadata.get('workflow_stages', {}).get('stitching', {}).get('quality_score')
+        if quality_score:
+            parsing_issues.append(f"Two-pass processing quality score: {quality_score:.1f}%")
+    
+    return LLMProcessingOutput(
+        punch_events=punch_events,
+        parsing_issues=parsing_issues
+    )
+
 
 # Example Usage (for testing purposes)
 async def main_test():

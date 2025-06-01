@@ -11,5 +11,35 @@
     "high_model": "gemini-2.5-pro-preview-05-06",
     "vision_model": "gemini-2.5-pro-preview-05-06",
     "function_calling_model": "gemini-2.0-flash"
+  },
+  "processing": {
+    "enable_two_pass": true,
+    "auto_detect_two_pass": true,
+    "force_two_pass": false,
+    "fallback_to_single_pass": true,
+    "excel_preprocessing": {
+      "remove_row_limit": true,
+      "use_first_sheet_only": true,
+      "convert_to_csv_first": true
+    }
+  },
+  "two_pass": {
+    "default_batch_size": 50,
+    "timeout_per_employee": 120.0,
+    "max_retries": 3,
+    "decision_engine": {
+      "complexity_threshold": 3,
+      "file_size_thresholds": {
+        "small_file_kb": 3,
+        "medium_file_kb": 6
+      },
+      "complexity_scoring": {
+        "small_file_points": 1,
+        "medium_file_points": 2,
+        "large_file_points": 3,
+        "employee_count_multiplier": 1.0,
+        "sheet_count_multiplier": 1.0
+      }
+    }
   }
 }

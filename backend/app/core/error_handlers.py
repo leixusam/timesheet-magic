@@ -247,6 +247,162 @@ class LLMComplexityError(TimesheetAnalysisError):
             debug_info=debug_info
         )
 
+class TwoPassDiscoveryError(TimesheetAnalysisError):
+    """Exception for employee discovery failures in two-pass processing."""
+    
+    def __init__(
+        self, 
+        message: str, 
+        original_filename: Optional[str] = None, 
+        discovery_issues: Optional[List[str]] = None,
+        file_size: Optional[int] = None,
+        suggestion: Optional[str] = None,
+        **kwargs
+    ):
+        # Build debug info
+        debug_info = {}
+        if original_filename:
+            debug_info["original_filename"] = original_filename
+        if discovery_issues:
+            debug_info["discovery_issues"] = discovery_issues
+        if file_size:
+            debug_info["file_size"] = file_size
+        
+        # Default suggestion based on common discovery failure patterns
+        default_suggestion = (
+            "Employee discovery failed. This may be due to an unusual file format or "
+            "lack of clear employee identifiers. Try using a standard timesheet format "
+            "with clear employee names or IDs."
+        )
+        
+        super().__init__(
+            message=message,
+            code="TWO_PASS_DISCOVERY_ERROR",
+            category=ErrorCategory.PARSING,
+            severity=ErrorSeverity.HIGH,
+            http_status=422,  # Unprocessable Entity
+            suggestion=suggestion or default_suggestion,
+            debug_info=debug_info,
+            **kwargs
+        )
+
+class TwoPassEmployeeParsingError(TimesheetAnalysisError):
+    """Exception for individual employee parsing failures in two-pass processing."""
+    
+    def __init__(
+        self, 
+        message: str, 
+        employee_identifier: Optional[str] = None,
+        original_filename: Optional[str] = None,
+        failed_employees: Optional[List[str]] = None,
+        successful_employees: Optional[List[str]] = None,
+        parsing_issues: Optional[List[str]] = None,
+        suggestion: Optional[str] = None,
+        **kwargs
+    ):
+        # Build debug info
+        debug_info = {}
+        if employee_identifier:
+            debug_info["employee_identifier"] = employee_identifier
+        if original_filename:
+            debug_info["original_filename"] = original_filename
+        if failed_employees:
+            debug_info["failed_employees"] = failed_employees
+        if successful_employees:
+            debug_info["successful_employees"] = successful_employees
+        if parsing_issues:
+            debug_info["parsing_issues"] = parsing_issues
+        
+        # Calculate failure context for better suggestions
+        total_employees = len(failed_employees or []) + len(successful_employees or [])
+        failure_rate = len(failed_employees or []) / total_employees if total_employees > 0 else 1.0
+        
+        # Default suggestion based on failure rate
+        if failure_rate >= 0.8:  # 80%+ failure rate
+            default_suggestion = (
+                "Most employees failed to parse. This suggests a systematic issue with "
+                "the file format or structure. Please verify the file contains standard "
+                "timesheet data with clear timestamps and employee identifiers."
+            )
+        elif failure_rate >= 0.5:  # 50%+ failure rate
+            default_suggestion = (
+                "Multiple employees failed to parse. This may indicate inconsistent "
+                "data formatting within the file. Please check for missing timestamps "
+                "or irregular employee name formats."
+            )
+        else:  # <50% failure rate
+            default_suggestion = (
+                "Some employees failed to parse, but most were successful. This is "
+                "typically due to incomplete data for specific employees or unusual "
+                "formatting in certain sections of the file."
+            )
+        
+        super().__init__(
+            message=message,
+            code="TWO_PASS_EMPLOYEE_PARSING_ERROR",
+            category=ErrorCategory.PARSING,
+            severity=ErrorSeverity.MEDIUM if failure_rate < 0.5 else ErrorSeverity.HIGH,
+            http_status=422,  # Unprocessable Entity
+            suggestion=suggestion or default_suggestion,
+            debug_info=debug_info,
+            **kwargs
+        )
+
+class TwoPassPartialSuccessError(TimesheetAnalysisError):
+    """Exception for partial success scenarios in two-pass processing."""
+    
+    def __init__(
+        self, 
+        message: str, 
+        successful_employees: List[str],
+        failed_employees: List[str],
+        partial_results: Optional[Dict[str, Any]] = None,
+        original_filename: Optional[str] = None,
+        suggestion: Optional[str] = None,
+        **kwargs
+    ):
+        success_count = len(successful_employees)
+        failure_count = len(failed_employees)
+        total_count = success_count + failure_count
+        success_rate = (success_count / total_count * 100) if total_count > 0 else 0
+        
+        # Build debug info
+        debug_info = {
+            "successful_employees": successful_employees,
+            "failed_employees": failed_employees,
+            "success_count": success_count,
+            "failure_count": failure_count,
+            "success_rate": success_rate
+        }
+        if original_filename:
+            debug_info["original_filename"] = original_filename
+        if partial_results:
+            debug_info["partial_results_available"] = True
+            debug_info["partial_punch_events"] = len(partial_results.get("punch_events", []))
+        
+        # Default suggestion based on success rate
+        if success_rate >= 70:
+            default_suggestion = (
+                f"Partial success: {success_count}/{total_count} employees processed successfully. "
+                f"You can proceed with the available results or retry processing for the failed employees."
+            )
+        else:
+            default_suggestion = (
+                f"Low success rate: only {success_count}/{total_count} employees processed successfully. "
+                f"Consider using single-pass processing or checking the file format."
+            )
+        
+        super().__init__(
+            message=message,
+            code="TWO_PASS_PARTIAL_SUCCESS",
+            category=ErrorCategory.PARSING,
+            severity=ErrorSeverity.MEDIUM,
+            http_status=206,  # Partial Content
+            suggestion=suggestion or default_suggestion,
+            debug_info=debug_info,
+            **kwargs
+        )
+
 class ErrorHandler:
     """Central error handling class for processing and responding to errors."""
     

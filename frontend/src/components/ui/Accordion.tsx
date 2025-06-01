@@ -25,10 +25,47 @@ const AccordionItem: React.FC<{
   const contentRef = useRef<HTMLDivElement>(null);
   const [contentHeight, setContentHeight] = useState<string>('0px');
 
-  useEffect(() => {
+  // Function to update height based on content
+  const updateHeight = () => {
     if (contentRef.current) {
-      setContentHeight(isOpen ? `${contentRef.current.scrollHeight}px` : '0px');
+      const newHeight = isOpen ? `${contentRef.current.scrollHeight}px` : '0px';
+      setContentHeight(newHeight);
     }
+  };
+
+  // Update height when open state changes
+  useEffect(() => {
+    updateHeight();
+  }, [isOpen]);
+
+  // Use a mutation observer to watch for content changes
+  useEffect(() => {
+    if (!contentRef.current || !isOpen) return;
+
+    const observer = new MutationObserver(() => {
+      // Small delay to ensure DOM has updated
+      setTimeout(updateHeight, 10);
+    });
+
+    // Observe changes to the content and its children
+    observer.observe(contentRef.current, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['class', 'style']
+    });
+
+    // Also observe for any new elements being added
+    const resizeObserver = new ResizeObserver(() => {
+      updateHeight();
+    });
+
+    resizeObserver.observe(contentRef.current);
+
+    return () => {
+      observer.disconnect();
+      resizeObserver.disconnect();
+    };
   }, [isOpen]);
 
   const getVariantStyles = () => {
@@ -97,7 +134,10 @@ const AccordionItem: React.FC<{
         </div>
       </button>
       <div
-        style={{ height: contentHeight }}
+        style={{ 
+          height: isOpen ? contentHeight : '0px',
+          maxHeight: isOpen ? 'none' : '0px'
+        }}
         className="overflow-hidden transition-all duration-300 ease-in-out"
       >
         <div

@@ -57,22 +57,22 @@
   - [x] 3.7 Add responsive breakpoints for mobile-first design
   - [x] 3.8 Create consistent button styles and hover states
 
-- [ ] 4.0 Enhance User Interactions and Actionability
-  - [ ] 4.1 Add action buttons to violation cards (Mark Resolved, Export, Create Task)
-  - [ ] 4.2 Implement sticky summary metrics bar that remains visible while scrolling
-  - [ ] 4.3 Replace full timestamps with relative dates ("Mon 3/17" or "Yesterday")
-  - [ ] 4.4 Move legal references to tooltips or expandable footnotes
-  - [ ] 4.5 Create consolidated warning banner for repeated caveats (⚠️ detection confidence)
-  - [ ] 4.6 Add sorting options (Severity, Date, Employee) with visual indicators
-  - [ ] 4.7 Implement pagination or infinite scroll for violation lists >25 items
-  - [ ] 4.8 Add keyboard navigation support for accessibility
+- [~] 4.0 Enhance User Interactions and Actionability
+  - [~] 4.1 Add action buttons to violation cards (Mark Resolved, Export, Create Task)
+  - [~] 4.2 Implement sticky summary metrics bar that remains visible while scrolling
+  - [~] 4.3 Replace full timestamps with relative dates ("Mon 3/17" or "Yesterday")
+  - [~] 4.4 Move legal references to tooltips or expandable footnotes
+  - [~] 4.5 Create consolidated warning banner for repeated caveats (⚠️ detection confidence)
+  - [~] 4.6 Add sorting options (Severity, Date, Employee) with visual indicators
+  - [~] 4.7 Implement pagination or infinite scroll for violation lists >25 items
+  - [~] 4.8 Add keyboard navigation support for accessibility
 
-- [ ] 5.0 Optimize Performance and Responsiveness
-  - [ ] 5.1 Implement lazy loading for violation cards below the fold
-  - [ ] 5.2 Optimize CSS delivery by inlining critical styles
-  - [ ] 5.3 Move Google Fonts loading to non-blocking with font-display: swap
-  - [ ] 5.4 Create single-column mobile layout with horizontal scrolling KPI cards
-  - [ ] 5.5 Add loading skeletons for better perceived performance
-  - [ ] 5.6 Implement virtualization for large violation lists (>100 items)
-  - [ ] 5.7 Optimize bundle size by code-splitting heavy components
-  - [ ] 5.8 Add performance monitoring and metrics tracking 
+- [~] 5.0 Optimize Performance and Responsiveness
+  - [~] 5.1 Implement lazy loading for violation cards below the fold
+  - [~] 5.2 Optimize CSS delivery by inlining critical styles
+  - [~] 5.3 Move Google Fonts loading to non-blocking with font-display: swap
+  - [~] 5.4 Create single-column mobile layout with horizontal scrolling KPI cards
+  - [~] 5.5 Add loading skeletons for better perceived performance
+  - [~] 5.6 Implement virtualization for large violation lists (>100 items)
+  - [~] 5.7 Optimize bundle size by code-splitting heavy components
+  - [~] 5.8 Add performance monitoring and metrics tracking 

@@ -5,6 +5,7 @@ Direct backend test for CSV upload functionality
 import asyncio
 import sys
 import os
+import pytest
 
 # Add the backend directory to the path
 sys.path.insert(0, '/Users/lei/repos/time-sheet-magic/backend')
@@ -14,6 +15,7 @@ load_dotenv('.env.local')
 
 from app.core.llm_processing import parse_file_to_structured_data
 
+@pytest.mark.asyncio
 async def test_csv_upload():
     """Test CSV upload with the actual file that's failing"""
     
