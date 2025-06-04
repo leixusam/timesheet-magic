@@ -27,6 +27,9 @@ COPY ./app ./app
 # Copy the llm_utils directory (LLM processing utilities)
 COPY ./llm_utils ./llm_utils
 
+# Copy the config.json file
+COPY ./config.json ./config.json
+
 # Make port 80 available to the world outside this container
 # (FastAPI/Uvicorn will run on this port by default, or we can specify)
 EXPOSE 8000

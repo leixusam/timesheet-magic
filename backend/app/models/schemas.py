@@ -46,6 +46,22 @@ class ViolationInstance(BaseModel):
     date_of_violation: date
     specific_details: str = Field(..., description="Details specific to this instance (e.g., 'Worked 6.5 hours, no meal break logged between 10:00 and 16:30.').")
     suggested_action_generic: str = Field(..., description="Generic actionable advice for this type of violation.")
+    
+    # Cost information from backend calculate_violation_costs function
+    estimated_cost: Optional[float] = Field(None, description="Estimated cost to remedy this violation for next payroll (e.g., penalty hour wages, overtime premiums)")
+    cost_description: Optional[str] = Field(None, description="Human-readable description of the cost calculation")
+    penalty_hours: Optional[float] = Field(None, description="For meal/rest break penalties (usually 1 hour)")
+    overtime_hours: Optional[float] = Field(None, description="For overtime violations (actual excess hours)")
+    
+    # New fields for transparency and debugging
+    related_punch_events: Optional[List[Dict[str, Any]]] = Field(
+        default_factory=list, 
+        description="Time punch events that led to this violation (for transparency and debugging)"
+    )
+    shift_summary: Optional[Dict[str, Any]] = Field(
+        None, 
+        description="Summary of the work shift that caused this violation"
+    )
 
 class EmployeeReportDetails(BaseModel):
     """ Summary of an individual employee's hours and violations for the report """
@@ -66,6 +82,13 @@ class ReportKPIs(BaseModel):
     total_double_overtime_hours: float
     estimated_overtime_cost: Optional[float] = None
     estimated_double_overtime_cost: Optional[float] = None
+    
+    # New fields for aggregated premium hours (replacement for cost displays)
+    total_premium_hours: Optional[float] = Field(None, description="Total aggregated premium hours from all overtime and penalty violations")
+    total_penalty_hours: Optional[float] = Field(None, description="Total penalty hours from meal break violations")
+    total_overtime_premium_hours: Optional[float] = Field(None, description="Total premium hours from overtime violations (50% of actual OT hours)")
+    total_double_time_premium_hours: Optional[float] = Field(None, description="Total premium hours from double time violations (100% of actual double time hours)")
+    
     compliance_risk_assessment: Optional[str] = Field(None, description="Qualitative assessment or count of compliance risks (e.g., 'High: 5 critical violations including 3 meal breaks').")
     count_meal_break_violations: int
     count_rest_break_violations: int # With caveat on data availability for V1

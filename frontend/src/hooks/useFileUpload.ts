@@ -15,6 +15,40 @@ interface ViolationInstance {
   date_of_violation: string;
   specific_details: string;
   suggested_action_generic: string;
+  // Cost information from backend calculate_violation_costs function
+  estimated_cost?: number;
+  cost_description?: string;
+  penalty_hours?: number; // For meal/rest break penalties (usually 1 hour)
+  overtime_hours?: number; // For overtime violations (actual excess hours)
+  // New fields for transparency and debugging
+  related_punch_events?: Array<{
+    employee_identifier: string;
+    timestamp: string;
+    formatted_time: string;
+    punch_type: string;
+    role?: string;
+    department?: string;
+    notes?: string;
+    hourly_wage?: number;
+  }>;
+  shift_summary?: {
+    employee_identifier: string;
+    shift_date: string;
+    clock_in_time?: string;
+    clock_out_time?: string;
+    clock_in_formatted?: string;
+    clock_out_formatted?: string;
+    total_hours_worked: number;
+    meal_breaks: Array<{
+      start_time: string;
+      end_time: string;
+      start_formatted: string;
+      end_formatted: string;
+      duration_minutes: number;
+    }>;
+    meal_break_count: number;
+    total_punch_events: number;
+  };
 }
 
 interface EmployeeReportDetails {

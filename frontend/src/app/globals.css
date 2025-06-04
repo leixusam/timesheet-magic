@@ -207,5 +207,28 @@ button, input, textarea, select {
 }
 
 .animate-fade-in-up {
-  animation: fadeInUp var(--duration-normal) var(--ease-spring) forwards;
+  animation: fadeInUp 0.4s cubic-bezier(0.3, 0.7, 0.4, 1) forwards;
+}
+
+/* BUGFIX: Browser-specific input field visibility issues */
+/* Fix for autofill background colors and text visibility - more targeted approach */
+input:-webkit-autofill {
+  -webkit-box-shadow: 0 0 0 1000px white inset !important;
+  -webkit-text-fill-color: inherit !important;
+}
+
+input:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0 1000px white inset !important;
+  -webkit-text-fill-color: inherit !important;
+}
+
+/* Remove webkit default styling that can interfere */
+input[type="search"] {
+  -webkit-appearance: none;
+}
+
+/* Fix for Safari date input visibility */
+input[type="date"]::-webkit-calendar-picker-indicator {
+  opacity: 1;
+  cursor: pointer;
 }

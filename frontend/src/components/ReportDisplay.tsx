@@ -2,20 +2,13 @@
 
 import React, { useState } from 'react';
 import EmployeeViolationGroup from './EmployeeViolationGroup';
+import DailyViolationGroup from './DailyViolationGroup';
 import ViolationTypeGroup from './ViolationTypeGroup';
+import ViolationCard, { ViolationInstance } from './ViolationCard';
 import { FilterPanel } from './ui/FilterPanel';
 import { useReportFilters } from '@/hooks/useReportFilters';
 
 // Define the interfaces based on the backend Pydantic schemas
-interface ViolationInstance {
-  rule_id: string;
-  rule_description: string;
-  employee_identifier: string;
-  date_of_violation: string; // Will be a date string from JSON
-  specific_details: string;
-  suggested_action_generic: string;
-}
-
 interface EmployeeReportDetails {
   employee_identifier: string;
   roles_observed?: string[];
@@ -34,6 +27,13 @@ interface ReportKPIs {
   total_double_overtime_hours: number;
   estimated_overtime_cost?: number;
   estimated_double_overtime_cost?: number;
+  
+  // New premium hours fields for better cost display
+  total_premium_hours?: number;
+  total_penalty_hours?: number;
+  total_overtime_premium_hours?: number;
+  total_double_time_premium_hours?: number;
+  
   compliance_risk_assessment?: string;
   count_meal_break_violations: number;
   count_rest_break_violations: number;
@@ -65,7 +65,6 @@ interface FinalAnalysisReport {
 interface ReportDisplayProps {
   analysisReport: FinalAnalysisReport;
   onNewAnalysis?: () => void; // Callback to start a new analysis
-  onDeleteReport?: () => void; // Callback when report is deleted
   requestedBy?: string; // Manager who requested the report
   requestedAt?: string; // Timestamp when report was requested
 }
@@ -73,14 +72,11 @@ interface ReportDisplayProps {
 const ReportDisplay: React.FC<ReportDisplayProps> = ({ 
   analysisReport, 
   onNewAnalysis,
-  onDeleteReport,
   requestedBy,
   requestedAt
 }) => {
   const [viewMode, setViewMode] = useState<'by-employee' | 'by-type'>('by-employee');
   const [isDisclaimersExpanded, setIsDisclaimersExpanded] = useState(false); // Changed to false by default
-  const [isDeleting, setIsDeleting] = useState(false);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   
   const { 
     request_id,
@@ -103,7 +99,18 @@ const ReportDisplay: React.FC<ReportDisplayProps> = ({
   const formatTimestamp = (timestamp?: string) => {
     if (!timestamp) return '';
     try {
-      const date = new Date(timestamp);
+      // BUGFIX: MISC-001 - Handle timezone issues in date parsing
+      let date: Date;
+      
+      if (timestamp.includes('T') || timestamp.includes('Z')) {
+        // Full ISO string with time/timezone - parse directly
+        date = new Date(timestamp);
+      } else {
+        // Date-only string (YYYY-MM-DD) - parse as local date to prevent timezone shift
+        const [year, month, day] = timestamp.split('-').map(Number);
+        date = new Date(year, month - 1, day); // month is 0-indexed
+      }
+      
       return date.toLocaleDateString('en-US', { 
         year: 'numeric',
         month: 'short',
@@ -117,45 +124,15 @@ const ReportDisplay: React.FC<ReportDisplayProps> = ({
     }
   };
 
-  // Filter violations to only count Critical and Warning levels (exclude Info)
-  const getCriticalAndWarningViolations = (violations: ViolationInstance[]) => {
+  // Filter violations to only count Violation level (exclude Information)
+  const getViolationLevelViolations = (violations: ViolationInstance[]) => {
     return violations.filter(violation => {
       const ruleId = violation.rule_id.toLowerCase();
-      // Critical violations: meal breaks, rest breaks
-      const isCritical = ruleId.includes('meal_break') || ruleId.includes('rest_break');
-      // Warning violations: overtime violations
-      const isWarning = ruleId.includes('daily_ot') || ruleId.includes('weekly_ot') || ruleId.includes('double_ot');
-      // Info violations would be things like general schedule notes (excluded)
-      return isCritical || isWarning;
+      // Violations: Require immediate payroll action (meal breaks + overtime)
+      const isViolation = ruleId.includes('meal_break') || ruleId.includes('daily_ot') || ruleId.includes('weekly_ot') || ruleId.includes('double_ot');
+      // Information: rest breaks and other low-confidence items (excluded from main count)
+      return isViolation;
     });
-  };
-
-  // Handle delete report
-  const handleDeleteReport = async () => {
-    if (!request_id) return;
-    
-    setIsDeleting(true);
-    try {
-      const response = await fetch(`/api/reports/${request_id}`, {
-        method: 'DELETE',
-      });
-      
-      if (response.ok) {
-        // Call the callback to notify parent component
-        if (onDeleteReport) {
-          onDeleteReport();
-        }
-        // Could also show a success message here
-      } else {
-        throw new Error('Failed to delete report');
-      }
-    } catch (error) {
-      console.error('Error deleting report:', error);
-      // Could show an error message here
-    } finally {
-      setIsDeleting(false);
-      setShowDeleteConfirm(false);
-    }
   };
 
   // Handle error states
@@ -174,7 +151,7 @@ const ReportDisplay: React.FC<ReportDisplayProps> = ({
               <div>
                 <h2 className="text-xl font-semibold text-gray-900">
                   Format Not Yet Supported
-            </h2>
+                </h2>
                 <p className="text-sm text-gray-600 mt-1">
                   We're working on adding support for your timesheet format
                 </p>
@@ -260,53 +237,7 @@ const ReportDisplay: React.FC<ReportDisplayProps> = ({
                 </svg>
                 Contact Support
               </button>
-
-              <button
-                onClick={() => setShowDeleteConfirm(true)}
-                className="inline-flex items-center gap-2 px-6 py-3 bg-gray-100 text-gray-700 rounded-lg font-medium hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 transition-colors"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                </svg>
-                Remove File
-              </button>
             </div>
-
-            {/* Delete Confirmation */}
-            {showDeleteConfirm && (
-              <div className="mt-6 bg-gray-50 border border-gray-200 rounded-lg p-4">
-                <div className="text-center">
-                  <p className="text-sm text-gray-700 mb-4">
-                    Are you sure you want to remove this file? This action cannot be undone.
-                  </p>
-                  <div className="flex justify-center gap-3">
-                    <button
-                      onClick={handleDeleteReport}
-                      disabled={isDeleting}
-                      className="inline-flex items-center gap-1 px-4 py-2 bg-red-600 text-white text-sm rounded-lg font-medium hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                    >
-                      {isDeleting ? (
-                        <>
-                          <svg className="w-3 h-3 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                          </svg>
-                          Removing...
-                        </>
-                      ) : (
-                        'Yes, Remove File'
-                      )}
-                    </button>
-                    <button
-                      onClick={() => setShowDeleteConfirm(false)}
-                      disabled={isDeleting}
-                      className="inline-flex items-center px-4 py-2 bg-gray-200 text-gray-700 text-sm rounded-lg font-medium hover:bg-gray-300 disabled:opacity-50 transition-colors"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
           </div>
 
           {/* Footer Note */}
@@ -327,131 +258,141 @@ const ReportDisplay: React.FC<ReportDisplayProps> = ({
       <div className="flex flex-wrap items-center justify-between gap-4 pb-2">
         <div className="flex flex-wrap items-center gap-3 text-xs text-gray-500">
           <span>{original_filename}</span>
-                    {requestedBy && (
+          {requestedBy && (
             <>
               <span className="text-gray-300">•</span>
               <span>Requested by {requestedBy}</span>
             </>
-                    )}
+          )}
           <span className="text-gray-300">•</span>
           <span>{formatTimestamp(requestedAt)}</span>
-              </div>
+        </div>
 
         <div className="flex items-center gap-3">
           <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                  Analysis Complete
-                </span>
-            </div>
-          </div>
+            Analysis Complete
+          </span>
+        </div>
+      </div>
 
       {/* Metrics Grid */}
-          {kpis && (
+      {kpis && (
         <div className="bg-white rounded-lg p-4 shadow-sm border border-gray-200">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div className="text-center">
-                <div className="text-3xl font-bold text-gray-900">{employee_summaries.length}</div>
+              <div className="text-3xl font-bold text-gray-900">{employee_summaries.length}</div>
               <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Employees</div>
-              </div>
+            </div>
             <div className="text-center">
-                <div className="text-3xl font-bold text-blue-600">{kpis.total_scheduled_labor_hours.toFixed(0)}h</div>
+              <div className="text-3xl font-bold text-gray-900">{kpis.total_scheduled_labor_hours.toFixed(0)}h</div>
               <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Total Hours</div>
-                <div className="text-xs text-gray-500 mt-1">
-                  {kpis.total_regular_hours.toFixed(0)} reg, {kpis.total_overtime_hours.toFixed(0)} OT
-                </div>
+              <div className="text-xs text-gray-500 mt-1">
+                {kpis.total_regular_hours.toFixed(0)} reg, {kpis.total_overtime_hours.toFixed(0)} OT
               </div>
+            </div>
             <div className="text-center">
-                <div className={`text-3xl font-bold ${
-                  all_identified_violations.length > 0 ? 'text-red-700' : 'text-green-700'
-                }`}>
-                  {all_identified_violations.length}
-                </div>
+              <div className={`text-3xl font-bold ${
+                (kpis.count_meal_break_violations + kpis.count_daily_overtime_violations + kpis.count_weekly_overtime_violations) > 0 ? 'text-red-600' : 'text-gray-900'
+              }`}>
+                {kpis.count_meal_break_violations + kpis.count_daily_overtime_violations + kpis.count_weekly_overtime_violations}
+              </div>
               <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Violations</div>
-                <div className="text-xs text-gray-500 mt-1">
-                  {kpis.count_meal_break_violations} meal, {kpis.count_daily_overtime_violations} daily OT
-                </div>
+              <div className="text-xs text-gray-500 mt-1">
+                {kpis.count_meal_break_violations} meal, {kpis.count_daily_overtime_violations} daily OT
               </div>
+            </div>
             <div className="text-center">
-                <div className="text-3xl font-bold text-green-600">
-                  {kpis.estimated_overtime_cost ? `$${kpis.estimated_overtime_cost.toFixed(0)}` : '$0'}
-                </div>
-              <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Overtime Cost</div>
-                <div className="text-xs text-gray-500 mt-1">Additional labor costs</div>
-            </div>
+              <div className={`text-3xl font-bold ${
+                kpis.total_premium_hours && kpis.total_premium_hours > 0 ? 'text-orange-600' : 'text-gray-900'
+              }`}>
+                {kpis.total_premium_hours ? `${kpis.total_premium_hours.toFixed(1)}hr` : '0hr'}
               </div>
+              <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Extra Hours</div>
+              <div className="text-xs text-gray-500 mt-1">Additional labor costs</div>
             </div>
-          )}
+          </div>
+        </div>
+      )}
 
       {/* Executive Summary with Gradient Background */}
-          {overall_report_summary_text && (
+      {overall_report_summary_text && (
         <div className="relative overflow-hidden bg-gradient-to-br from-blue-50 via-white to-indigo-50 rounded-xl shadow-sm border border-blue-200">
           <div className="absolute inset-0 bg-grid-pattern opacity-5"></div>
           <div className="relative p-8">
-              <div className="flex items-center gap-3 mb-6">
-                <div className="flex-shrink-0 w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
-                  <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                </div>
-              <h2 className="text-xl font-medium text-gray-900">Executive Summary</h2>
+            <div className="flex items-center gap-3 mb-6">
+              <div className="flex-shrink-0 w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
+                <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
               </div>
-              
-              <div className="prose prose-blue max-w-none">
+              <h2 className="text-xl font-medium text-gray-900">Executive Summary</h2>
+            </div>
+            
+            <div className="prose prose-blue max-w-none">
               <div className="text-gray-700 leading-relaxed">
                 {/* Parse and format summary text */}
-                  {overall_report_summary_text.split(/\.\s+/).map((sentence, index) => {
-                    if (!sentence.trim()) return null;
-                    
-                    return (
+                {overall_report_summary_text.split(/\.\s+/).map((sentence, index) => {
+                  if (!sentence.trim()) return null;
+                  
+                  return (
                     <p key={index} className="mb-4 text-base">
-                        {sentence.split(/(\$[\d,]+(?:\.\d{2})?|\d+(?:\.\d+)?\s*(?:hours?|violations?|employees?)|\d+\s*(?:meal\s+break|daily\s+overtime|weekly\s+overtime|rest\s+break)\s*violations?)/gi).map((part, partIndex) => {
-                          // Highlight money amounts
-                          if (part.match(/\$[\d,]+(?:\.\d{2})?/)) {
-                            return (
-                            <span key={partIndex} className="inline-flex items-center px-2 py-0.5 rounded-md bg-green-100 text-green-800 font-semibold text-sm">
-                                {part}
-                              </span>
-                            );
-                          }
-                          // Highlight specific violation types
-                          if (part.match(/\d+\s*(?:meal\s+break|daily\s+overtime|weekly\s+overtime|rest\s+break)\s*violations?/gi)) {
-                            return (
-                            <span key={partIndex} className="inline-flex items-center px-2 py-0.5 rounded-md bg-red-100 text-red-800 font-semibold text-sm">
-                                {part}
-                              </span>
-                            );
-                          }
-                          // Highlight general violation counts
-                          if (part.match(/\d+\s*violations?/)) {
-                            return (
-                            <span key={partIndex} className="inline-flex items-center px-2 py-0.5 rounded-md bg-orange-100 text-orange-800 font-semibold text-sm">
-                                {part}
-                              </span>
-                            );
-                          }
-                          // Highlight hour counts
-                          if (part.match(/\d+(?:\.\d+)?\s*hours?/)) {
-                            return (
-                            <span key={partIndex} className="inline-flex items-center px-2 py-0.5 rounded-md bg-blue-100 text-blue-800 font-semibold text-sm">
-                                {part}
-                              </span>
-                            );
-                          }
-                          // Highlight employee counts
-                          if (part.match(/\d+\s*employees?/)) {
-                            return (
-                            <span key={partIndex} className="inline-flex items-center px-2 py-0.5 rounded-md bg-purple-100 text-purple-800 font-semibold text-sm">
-                                {part}
-                              </span>
-                            );
-                          }
-                          return part;
-                        })}
-                      </p>
-                    );
-                  })}
-                </div>
+                      {sentence.split(/(\$[\d,]+(?:\.\d{2})?|\d+(?:\.\d+)?\s*(?:premium\s+hours?|hours?|violations?|employees?)|\d+\s*(?:meal\s+break|daily\s+overtime|weekly\s+overtime|rest\s+break)\s*violations?)/gi).map((part, partIndex) => {
+                      // Highlight money amounts
+                      if (part.match(/\$[\d,]+(?:\.\d{2})?/)) {
+                        return (
+                          <span key={partIndex} className="inline-flex items-center px-2 py-0.5 rounded-md bg-green-100 text-green-800 font-semibold text-sm">
+                            {part}
+                          </span>
+                        );
+                      }
+                      // Highlight premium hours specifically
+                      if (part.match(/\d+(?:\.\d+)?\s*premium\s+hours?/gi)) {
+                        return (
+                          <span key={partIndex} className="inline-flex items-center px-2 py-0.5 rounded-md bg-green-100 text-green-800 font-semibold text-sm">
+                            {part}
+                          </span>
+                        );
+                      }
+                      // Highlight specific violation types
+                      if (part.match(/\d+\s*(?:meal\s+break|daily\s+overtime|weekly\s+overtime|rest\s+break)\s*violations?/gi)) {
+                        return (
+                          <span key={partIndex} className="inline-flex items-center px-2 py-0.5 rounded-md bg-red-100 text-red-800 font-semibold text-sm">
+                            {part}
+                          </span>
+                        );
+                      }
+                      // Highlight general violation counts
+                      if (part.match(/\d+\s*violations?/)) {
+                        return (
+                          <span key={partIndex} className="inline-flex items-center px-2 py-0.5 rounded-md bg-orange-100 text-orange-800 font-semibold text-sm">
+                            {part}
+                          </span>
+                        );
+                      }
+                      // Highlight general hour counts
+                      if (part.match(/\d+(?:\.\d+)?\s*hours?/)) {
+                        return (
+                          <span key={partIndex} className="inline-flex items-center px-2 py-0.5 rounded-md bg-blue-100 text-blue-800 font-semibold text-sm">
+                            {part}
+                          </span>
+                        );
+                      }
+                      // Highlight employee counts
+                      if (part.match(/\d+\s*employees?/)) {
+                        return (
+                          <span key={partIndex} className="inline-flex items-center px-2 py-0.5 rounded-md bg-purple-100 text-purple-800 font-semibold text-sm">
+                            {part}
+                          </span>
+                        );
+                      }
+                      return part;
+                    })}
+                  </p>
+                );
+                })}
               </div>
-            
+            </div>
+          
             {/* Key findings summary note */}
             <div className="mt-6 p-4 bg-white/70 backdrop-blur-sm rounded-lg border border-blue-100">
               <p className="text-sm text-gray-600">
@@ -466,9 +407,9 @@ const ReportDisplay: React.FC<ReportDisplayProps> = ({
       {/* Progressive Disclosure Compliance Violations with Filtering */}
       {all_identified_violations.length > 0 && (
         <div className="bg-white rounded-xl p-8 shadow-sm border border-gray-200">
-            <div className="mb-6">
-              <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-                <div>
+          <div className="mb-6">
+            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+              <div>
                 <div className="flex items-center gap-3 mb-2">
                   <div className="flex-shrink-0 w-8 h-8 bg-red-100 rounded-lg flex items-center justify-center">
                     <svg className="w-4 h-4 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -479,112 +420,112 @@ const ReportDisplay: React.FC<ReportDisplayProps> = ({
                     Compliance Violations
                   </h2>
                 </div>
-                  <p className="text-sm text-gray-600">
-                    Detailed analysis of potential labor law violations
-                    {filteredResults.activeFilterCount > 0 && (
-                      <span className="ml-2">
-                        ({filteredResults.filteredCount} of {filteredResults.totalCount} showing)
-                      </span>
-                    )}
-                  </p>
-                </div>
-                
-                {/* View Mode Toggle */}
-                <div className="flex items-center space-x-1 bg-gray-100 rounded-lg p-1">
-                  <button
-                    onClick={() => setViewMode('by-employee')}
-                    className={`px-3 py-2 text-sm font-medium rounded-md transition-colors ${
-                      viewMode === 'by-employee'
-                        ? 'bg-white text-blue-700 shadow-sm'
-                        : 'text-gray-600 hover:text-gray-900'
-                    }`}
-                  >
-                    <span className="hidden sm:inline">👤 By Employee</span>
-                    <span className="sm:hidden">👤 Employee</span>
-                  </button>
-                  <button
-                    onClick={() => setViewMode('by-type')}
-                    className={`px-3 py-2 text-sm font-medium rounded-md transition-colors ${
-                      viewMode === 'by-type'
-                        ? 'bg-white text-blue-700 shadow-sm'
-                        : 'text-gray-600 hover:text-gray-900'
-                    }`}
-                  >
-                    <span className="hidden sm:inline">📋 By Type</span>
-                    <span className="sm:hidden">📋 Type</span>
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* Compact Filter Panel */}
-            <FilterPanel
-              filteredResults={filteredResults}
-              filterHook={filterHook}
-              showResultCount={true}
-              isCollapsible={true}
-              contextInfo={
-                viewMode === 'by-employee' 
-                  ? `${new Set(filteredResults.violations.map(v => v.employee_identifier)).size} employee${new Set(filteredResults.violations.map(v => v.employee_identifier)).size !== 1 ? 's' : ''}`
-                  : (() => {
-                      const getViolationType = (ruleId: string): string => {
-                        const lowerRuleId = ruleId.toLowerCase();
-                        if (lowerRuleId.includes('meal_break') || lowerRuleId.includes('meal')) return 'Meal Break';
-                        if (lowerRuleId.includes('rest_break') || lowerRuleId.includes('rest')) return 'Rest Break';
-                        if (lowerRuleId.includes('daily_ot') || lowerRuleId.includes('daily')) return 'Daily Overtime';
-                        if (lowerRuleId.includes('weekly_ot') || lowerRuleId.includes('weekly')) return 'Weekly Overtime';
-                        if (lowerRuleId.includes('double_ot') || lowerRuleId.includes('double')) return 'Double Overtime';
-                        return 'Other';
-                      };
-                      const uniqueTypes = new Set(filteredResults.violations.map(v => getViolationType(v.rule_id)));
-                      return `${uniqueTypes.size} violation type${uniqueTypes.size !== 1 ? 's' : ''}`;
-                    })()
-              }
-              className="mb-6"
-            />
-
-            {/* Render filtered violations based on selected view mode */}
-            {filteredResults.filteredCount > 0 ? (
-              <div className="violation-grid">
-                {viewMode === 'by-employee' ? (
-                  <EmployeeViolationGroup 
-                    violations={filteredResults.violations} 
-                    defaultCollapsed={true}
-                    searchTerm={filterHook.filters.searchText}
-                  />
-                ) : (
-                  <ViolationTypeGroup 
-                    violations={filteredResults.violations} 
-                    defaultCollapsed={true}
-                    searchTerm={filterHook.filters.searchText}
-                  />
-                )}
-              </div>
-            ) : (
-              <div className="text-center py-8">
-                <div className="text-gray-400 mb-2">
-                  <svg className="w-12 h-12 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                </div>
-                <h3 className="text-lg font-medium text-gray-900 mb-1">
-                  {filteredResults.activeFilterCount > 0 ? 'No violations match your filters' : 'No Violations Found'}
-                </h3>
-                <p className="text-gray-600">
-                  {filteredResults.activeFilterCount > 0 
-                    ? 'Try adjusting your filter criteria to see more results.'
-                    : 'All employees appear to be in compliance with labor regulations.'
-                  }
+                <p className="text-sm text-gray-600">
+                  Detailed analysis of potential labor law violations
+                  {filteredResults.activeFilterCount > 0 && (
+                    <span className="ml-2">
+                      ({filteredResults.filteredCount} of {filteredResults.totalViolationCount + filteredResults.totalInformationCount} showing)
+                    </span>
+                  )}
                 </p>
               </div>
-            )}
+              
+              {/* View Mode Toggle */}
+              <div className="flex items-center space-x-1 bg-gray-100 rounded-lg p-1">
+                <button
+                  onClick={() => setViewMode('by-employee')}
+                  className={`px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+                    viewMode === 'by-employee'
+                      ? 'bg-white text-blue-700 shadow-sm'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  <span className="hidden sm:inline">👤 By Employee</span>
+                  <span className="sm:hidden">👤 Employee</span>
+                </button>
+                <button
+                  onClick={() => setViewMode('by-type')}
+                  className={`px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+                    viewMode === 'by-type'
+                      ? 'bg-white text-blue-700 shadow-sm'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  <span className="hidden sm:inline">📋 By Type</span>
+                  <span className="sm:hidden">📋 Type</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Compact Filter Panel */}
+          <FilterPanel
+            filteredResults={filteredResults}
+            filterHook={filterHook}
+            showResultCount={true}
+            isCollapsible={true}
+            contextInfo={
+              viewMode === 'by-employee' 
+                ? `${new Set(filteredResults.violations.map(v => v.employee_identifier)).size} employee${new Set(filteredResults.violations.map(v => v.employee_identifier)).size !== 1 ? 's' : ''}`
+                : (() => {
+                    const getViolationType = (ruleId: string): string => {
+                      const lowerRuleId = ruleId.toLowerCase();
+                      if (lowerRuleId.includes('meal_break') || lowerRuleId.includes('meal')) return 'Meal Break';
+                      if (lowerRuleId.includes('rest_break') || lowerRuleId.includes('rest')) return 'Rest Break';
+                      if (lowerRuleId.includes('daily_ot') || lowerRuleId.includes('daily')) return 'Daily Overtime';
+                      if (lowerRuleId.includes('weekly_ot') || lowerRuleId.includes('weekly')) return 'Weekly Overtime';
+                      if (lowerRuleId.includes('double_ot') || lowerRuleId.includes('double')) return 'Double Overtime';
+                      return 'Other';
+                    };
+                    const uniqueTypes = new Set(filteredResults.violations.map(v => getViolationType(v.rule_id)));
+                    return `${uniqueTypes.size} violation type${uniqueTypes.size !== 1 ? 's' : ''}`;
+                  })()
+            }
+            className="mb-6"
+          />
+
+          {/* Render filtered violations based on selected view mode */}
+          {filteredResults.filteredCount > 0 ? (
+            <div className="violation-grid">
+              {viewMode === 'by-employee' ? (
+                <EmployeeViolationGroup 
+                  violations={filteredResults.violations} 
+                  defaultCollapsed={true}
+                  searchTerm={filterHook.filters.searchText}
+                />
+              ) : (
+                <ViolationTypeGroup 
+                  violations={filteredResults.violations} 
+                  defaultCollapsed={true}
+                  searchTerm={filterHook.filters.searchText}
+                />
+              )}
+            </div>
+          ) : (
+            <div className="text-center py-8">
+              <div className="text-gray-400 mb-2">
+                <svg className="w-12 h-12 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <h3 className="text-lg font-medium text-gray-900 mb-1">
+                {filteredResults.activeFilterCount > 0 ? 'No violations match your filters' : 'No Violations Found'}
+              </h3>
+              <p className="text-gray-600">
+                {filteredResults.activeFilterCount > 0 
+                  ? 'Try adjusting your filter criteria to see more results.'
+                  : 'All employees appear to be in compliance with labor regulations.'
+                }
+              </p>
+            </div>
+          )}
         </div>
       )}
 
       {/* Employee Summary Table */}
       {employee_summaries.length > 0 && (
         <div className="bg-white rounded-xl p-8 shadow-sm border border-gray-200">
-            <div className="mb-6">
+          <div className="mb-6">
             <div className="flex items-center gap-3 mb-2">
               <div className="flex-shrink-0 w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center">
                 <svg className="w-4 h-4 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -593,62 +534,62 @@ const ReportDisplay: React.FC<ReportDisplayProps> = ({
               </div>
               <h2 className="text-xl font-medium text-gray-900">Employee Summary</h2>
             </div>
-              <p className="text-sm text-gray-600">Individual employee hours and violation breakdown</p>
-            </div>
-            <div className="overflow-x-auto -mx-8">
-              <div className="inline-block min-w-full px-8">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Employee
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Roles
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Total Hours
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Regular
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Overtime
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Double OT
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Violations
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {employee_summaries.map((employee, index) => (
-                      <tr key={index} className="hover:bg-gray-50 transition-colors">
-                        <td className="px-4 py-4 whitespace-nowrap">
-                          <div className="text-sm font-medium text-gray-900">
-                            {employee.employee_identifier}
-                          </div>
-                        </td>
-                        <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {employee.roles_observed?.join(', ') || '-'}
-                        </td>
-                        <td className="px-4 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                          {employee.total_hours_worked.toFixed(1)}h
-                        </td>
-                        <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900">
-                          {employee.regular_hours.toFixed(1)}h
-                        </td>
-                        <td className="px-4 py-4 whitespace-nowrap text-sm font-medium text-yellow-600">
-                          {employee.overtime_hours.toFixed(1)}h
-                        </td>
-                        <td className="px-4 py-4 whitespace-nowrap text-sm font-medium text-red-600">
-                          {employee.double_overtime_hours.toFixed(1)}h
-                        </td>
-                        <td className="px-4 py-4 whitespace-nowrap">
+            <p className="text-sm text-gray-600">Individual employee hours and violation breakdown</p>
+          </div>
+          <div className="overflow-x-auto -mx-8">
+            <div className="inline-block min-w-full px-8">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Employee
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Roles
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Total Hours
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Regular
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Overtime
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Double OT
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Violations
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {employee_summaries.map((employee, index) => (
+                    <tr key={index} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-4 py-4 whitespace-nowrap">
+                        <div className="text-sm font-medium text-gray-900">
+                          {employee.employee_identifier}
+                        </div>
+                      </td>
+                      <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {employee.roles_observed?.join(', ') || '-'}
+                      </td>
+                      <td className="px-4 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                        {employee.total_hours_worked.toFixed(1)}h
+                      </td>
+                      <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {employee.regular_hours.toFixed(1)}h
+                      </td>
+                      <td className="px-4 py-4 whitespace-nowrap text-sm font-medium text-yellow-600">
+                        {employee.overtime_hours.toFixed(1)}h
+                      </td>
+                      <td className="px-4 py-4 whitespace-nowrap text-sm font-medium text-red-600">
+                        {employee.double_overtime_hours.toFixed(1)}h
+                      </td>
+                      <td className="px-4 py-4 whitespace-nowrap">
                         {(() => {
-                          const criticalAndWarningViolations = getCriticalAndWarningViolations(employee.violations_for_employee);
+                          const criticalAndWarningViolations = getViolationLevelViolations(employee.violations_for_employee);
                           return criticalAndWarningViolations.length > 0 ? (
                             <div className="flex flex-col gap-1">
                               <span className="inline-flex items-center px-3 py-1.5 rounded-md text-sm font-semibold bg-red-100 text-red-800 border border-red-200">
@@ -675,11 +616,11 @@ const ReportDisplay: React.FC<ReportDisplayProps> = ({
                             </div>
                           );
                         })()}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </div>
         </div>
@@ -687,117 +628,117 @@ const ReportDisplay: React.FC<ReportDisplayProps> = ({
 
       {/* Important Notices & Disclaimers - Clean Design */}
       <div className="bg-white rounded-xl p-8 shadow-sm border border-gray-200">
-          <button
-            onClick={() => setIsDisclaimersExpanded(!isDisclaimersExpanded)}
+        <button
+          onClick={() => setIsDisclaimersExpanded(!isDisclaimersExpanded)}
           className="w-full text-left flex items-center justify-between"
-          >
-            <div className="flex items-center gap-3">
+        >
+          <div className="flex items-center gap-3">
             <div className="flex-shrink-0 w-8 h-8 bg-amber-100 rounded-lg flex items-center justify-center">
               <svg className="w-4 h-4 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.464 0L5.732 15.5c-.77.833.192 2.5 1.732 2.5z" />
               </svg>
             </div>
             <h3 className="text-xl font-medium text-gray-900">
-                Important Notices & Disclaimers
-                {duplicate_name_warnings.length > 0 || parsing_issues_summary.length > 0 || all_identified_violations.length > 0 ? 
-                  ` (${[duplicate_name_warnings.length > 0, parsing_issues_summary.length > 0, all_identified_violations.length > 0].filter(Boolean).length} notices)` : ''}
-              </h3>
-            </div>
-            <svg
+              Important Notices & Disclaimers
+              {duplicate_name_warnings.length > 0 || parsing_issues_summary.length > 0 || all_identified_violations.length > 0 ? 
+                ` (${[duplicate_name_warnings.length > 0, parsing_issues_summary.length > 0, all_identified_violations.length > 0].filter(Boolean).length} notices)` : ''}
+            </h3>
+          </div>
+          <svg
             className={`h-5 w-5 text-gray-400 transition-transform ${isDisclaimersExpanded ? 'rotate-180' : ''}`}
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-            </svg>
-          </button>
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
 
-          {isDisclaimersExpanded && (
+        {isDisclaimersExpanded && (
           <div className="mt-6 space-y-4">
-              {/* Analysis Warning */}
+            {/* Analysis Warning */}
             <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
-                <div className="flex items-start gap-3">
+              <div className="flex items-start gap-3">
                 <svg className="h-5 w-5 text-amber-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.464 0L5.732 15.5c-.77.833.192 2.5 1.732 2.5z" />
-                  </svg>
-                  <div>
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.464 0L5.732 15.5c-.77.833.192 2.5 1.732 2.5z" />
+                </svg>
+                <div>
                   <h4 className="text-sm font-medium text-amber-800">Analysis Completed with Warnings</h4>
                   <p className="mt-1 text-sm text-amber-700">
-                      Some data may be incomplete. Please review all results carefully.
+                    Some data may be incomplete. Please review all results carefully.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Automated Detection Notice */}
+            {all_identified_violations.length > 0 && (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <div className="flex items-start gap-3">
+                  <svg className="h-5 w-5 text-blue-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                  </svg>
+                  <div>
+                    <h4 className="text-sm font-medium text-blue-800">Automated Detection Notice</h4>
+                    <p className="mt-1 text-sm text-blue-700">
+                      Violation detection is based on automated analysis of timesheet data. Please review all flagged items and verify accuracy before taking action. Results should be considered advisory and require human validation.
                     </p>
                   </div>
                 </div>
               </div>
+            )}
 
-              {/* Automated Detection Notice */}
-              {all_identified_violations.length > 0 && (
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                  <div className="flex items-start gap-3">
-                  <svg className="h-5 w-5 text-blue-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-                    </svg>
-                    <div>
-                    <h4 className="text-sm font-medium text-blue-800">Automated Detection Notice</h4>
-                    <p className="mt-1 text-sm text-blue-700">
-                        Violation detection is based on automated analysis of timesheet data. Please review all flagged items and verify accuracy before taking action. Results should be considered advisory and require human validation.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Duplicate Names Warning */}
-              {duplicate_name_warnings.length > 0 && (
-                <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
-                  <div className="flex items-start gap-3">
+            {/* Duplicate Names Warning */}
+            {duplicate_name_warnings.length > 0 && (
+              <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+                <div className="flex items-start gap-3">
                   <svg className="h-5 w-5 text-orange-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                    </svg>
-                    <div className="flex-1">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                  </svg>
+                  <div className="flex-1">
                     <h4 className="text-sm font-medium text-orange-800">Potential Duplicate Employee Names</h4>
-                      <p className="mt-1 text-sm text-orange-700 mb-3">
-                        Similar employee names were detected that may represent the same person. Please verify and consolidate if necessary.
-                      </p>
-                      <ul className="space-y-1">
-                        {duplicate_name_warnings.map((warning, index) => (
-                          <li key={index} className="text-sm text-orange-700 flex items-start gap-2">
-                            <span className="text-orange-400 font-medium">•</span>
-                            <span>{warning}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
+                    <p className="mt-1 text-sm text-orange-700 mb-3">
+                      Similar employee names were detected that may represent the same person. Please verify and consolidate if necessary.
+                    </p>
+                    <ul className="space-y-1">
+                      {duplicate_name_warnings.map((warning, index) => (
+                        <li key={index} className="text-sm text-orange-700 flex items-start gap-2">
+                          <span className="text-orange-400 font-medium">•</span>
+                          <span>{warning}</span>
+                        </li>
+                      ))}
+                    </ul>
                   </div>
                 </div>
-              )}
+              </div>
+            )}
 
-              {/* Data Parsing Issues */}
-              {parsing_issues_summary.length > 0 && (
-                <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-                  <div className="flex items-start gap-3">
+            {/* Data Parsing Issues */}
+            {parsing_issues_summary.length > 0 && (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                <div className="flex items-start gap-3">
                   <svg className="h-5 w-5 text-red-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    <div className="flex-1">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <div className="flex-1">
                     <h4 className="text-sm font-medium text-red-800">Data Parsing Issues</h4>
-                      <p className="mt-1 text-sm text-red-700 mb-3">
-                        Some data could not be properly parsed from the uploaded file. This may affect analysis accuracy.
-                      </p>
-                      <ul className="space-y-1">
-                        {parsing_issues_summary.map((issue, index) => (
-                          <li key={index} className="text-sm text-red-700 flex items-start gap-2">
-                            <span className="text-red-400 font-medium">•</span>
-                            <span>{issue}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
+                    <p className="mt-1 text-sm text-red-700 mb-3">
+                      Some data could not be properly parsed from the uploaded file. This may affect analysis accuracy.
+                    </p>
+                    <ul className="space-y-1">
+                      {parsing_issues_summary.map((issue, index) => (
+                        <li key={index} className="text-sm text-red-700 flex items-start gap-2">
+                          <span className="text-red-400 font-medium">•</span>
+                          <span>{issue}</span>
+                        </li>
+                      ))}
+                    </ul>
                   </div>
                 </div>
-              )}
-            </div>
-          )}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Action Buttons at Bottom */}
@@ -837,48 +778,6 @@ const ReportDisplay: React.FC<ReportDisplayProps> = ({
                 </svg>
                 New Analysis
               </button>
-            )}
-
-            {/* Delete Button */}
-            {!showDeleteConfirm ? (
-              <button
-                onClick={() => setShowDeleteConfirm(true)}
-                className="inline-flex items-center gap-2 px-6 py-3 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition-colors shadow-sm"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                </svg>
-                Delete Report
-              </button>
-            ) : (
-              <div className="flex items-center gap-3 px-4 py-2 bg-red-50 border border-red-200 rounded-lg">
-                <span className="text-sm text-red-800 font-medium">Delete this report permanently?</span>
-                <div className="flex gap-2">
-                  <button
-                    onClick={handleDeleteReport}
-                    disabled={isDeleting}
-                    className="inline-flex items-center gap-1 px-3 py-1.5 bg-red-600 text-white text-sm rounded font-medium hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  >
-                    {isDeleting ? (
-                      <>
-                        <svg className="w-3 h-3 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                        </svg>
-                        Deleting...
-                      </>
-                    ) : (
-                      'Yes, Delete'
-                    )}
-                  </button>
-                  <button
-                    onClick={() => setShowDeleteConfirm(false)}
-                    disabled={isDeleting}
-                    className="inline-flex items-center px-3 py-1.5 bg-gray-200 text-gray-800 text-sm rounded font-medium hover:bg-gray-300 disabled:opacity-50 transition-colors"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </div>
             )}
           </div>
         </div>

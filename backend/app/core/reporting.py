@@ -33,9 +33,47 @@ from app.core.compliance_rules import (
     get_all_compliance_violations
 )
 from app.core.logging_config import get_logger
+import re
 
 # Initialize logger for this module
 logger = get_logger("reporting")
+
+
+def _calculate_aggregated_premium_hours(violations: List[ViolationInstance]) -> Dict[str, float]:
+    """
+    Calculate aggregated premium hours from all violations.
+    
+    Args:
+        violations: List of ViolationInstance objects with penalty_hours and overtime_hours
+        
+    Returns:
+        Dict with aggregated premium hour totals
+    """
+    total_penalty_hours = 0.0
+    total_overtime_premium_hours = 0.0
+    total_double_time_premium_hours = 0.0
+    
+    for violation in violations:
+        penalty_hours = getattr(violation, 'penalty_hours', 0.0) or 0.0
+        overtime_hours = getattr(violation, 'overtime_hours', 0.0) or 0.0
+        
+        # Add penalty hours (from meal break violations)
+        total_penalty_hours += penalty_hours
+        
+        # Add overtime premium hours (categorize by violation type)
+        if "DOUBLE_TIME" in violation.rule_id:
+            total_double_time_premium_hours += overtime_hours
+        elif any(keyword in violation.rule_id for keyword in ["OVERTIME", "DAILY_OT", "WEEKLY_OT"]):
+            total_overtime_premium_hours += overtime_hours
+    
+    total_premium_hours = total_penalty_hours + total_overtime_premium_hours + total_double_time_premium_hours
+    
+    return {
+        "total_premium_hours": total_premium_hours,
+        "total_penalty_hours": total_penalty_hours,
+        "total_overtime_premium_hours": total_overtime_premium_hours,
+        "total_double_time_premium_hours": total_double_time_premium_hours
+    }
 
 
 def calculate_kpi_tiles_data(
@@ -68,12 +106,16 @@ def calculate_kpi_tiles_data(
     violation_summary = analysis_results["violation_summary"]
     wage_data_note = analysis_results["wage_data_source_note"]
     
-    # Calculate compliance risk assessment text
+    # Get enriched violations for premium hour calculation
+    enriched_violations = compile_compliance_violations_with_costs(punch_events)
+    premium_hours = _calculate_aggregated_premium_hours(enriched_violations)
+    
+    # Calculate compliance risk assessment text (updated to use premium hours)
     total_violations = analysis_results["total_violations"]
     risk_assessment = _generate_compliance_risk_assessment(
         total_violations=total_violations,
         violation_summary=violation_summary,
-        violation_costs=violation_costs
+        premium_hours=premium_hours
     )
     
     # Create and return KPI data structure
@@ -84,15 +126,24 @@ def calculate_kpi_tiles_data(
         total_overtime_hours=labor_costs["total_overtime_hours"],
         total_double_overtime_hours=labor_costs["total_double_time_hours"],
         
-        # Overtime cost estimates (the premium costs, not total costs)
+        # Keep old cost fields for backward compatibility (but may be deprecated)
         estimated_overtime_cost=violation_costs["overtime_cost"],  # Premium above regular rate
         estimated_double_overtime_cost=violation_costs["double_time_cost"],  # Premium above regular rate
+        
+        # New aggregated premium hours fields
+        total_premium_hours=premium_hours["total_premium_hours"],
+        total_penalty_hours=premium_hours["total_penalty_hours"],
+        total_overtime_premium_hours=premium_hours["total_overtime_premium_hours"],
+        total_double_time_premium_hours=premium_hours["total_double_time_premium_hours"],
         
         # Compliance violation counts
         count_meal_break_violations=violation_summary["meal_breaks"],
         count_rest_break_violations=violation_summary["rest_breaks"],
         count_daily_overtime_violations=violation_summary["daily_overtime"],
         count_weekly_overtime_violations=violation_summary["weekly_overtime"],
+        # NOTE: Double overtime violations are already included in the daily_overtime count above.
+        # This field provides the breakdown for reporting but should NOT be added to total violation counts
+        # to avoid double counting (daily_overtime already includes both regular and double overtime violations)
         count_daily_double_overtime_violations=_count_daily_double_overtime_violations(analysis_results),
         
         # Risk assessment and notes
@@ -104,7 +155,7 @@ def calculate_kpi_tiles_data(
 def _generate_compliance_risk_assessment(
     total_violations: int,
     violation_summary: Dict[str, int],
-    violation_costs: Dict[str, Any]
+    premium_hours: Dict[str, float]
 ) -> str:
     """
     Generate qualitative compliance risk assessment text for KPI display.
@@ -112,7 +163,7 @@ def _generate_compliance_risk_assessment(
     Args:
         total_violations: Total number of violations detected
         violation_summary: Breakdown of violations by type
-        violation_costs: Cost analysis results
+        premium_hours: Premium hours breakdown
         
     Returns:
         Human-readable risk assessment string
@@ -120,13 +171,13 @@ def _generate_compliance_risk_assessment(
     if total_violations == 0:
         return "Low: No compliance violations detected"
     
-    # Calculate cost impact level
-    total_cost = violation_costs.get("total_estimated_cost", 0)
-    cost_level = "Low"
-    if total_cost > 1000:
-        cost_level = "High"
-    elif total_cost > 500:
-        cost_level = "Medium"
+    # Calculate impact level based on premium hours
+    total_premium_hours = premium_hours.get("total_premium_hours", 0)
+    impact_level = "Low"
+    if total_premium_hours > 20:
+        impact_level = "High"
+    elif total_premium_hours > 10:
+        impact_level = "Medium"
     
     # Identify most critical violation types
     critical_violations = []
@@ -139,18 +190,18 @@ def _generate_compliance_risk_assessment(
     if violation_summary.get("rest_breaks", 0) > 0:
         critical_violations.append(f"{violation_summary['rest_breaks']} rest break")
     
-    # Build risk assessment string
+    # Build risk assessment string with premium hours
     risk_level = "Medium"
-    if total_violations >= 10 or total_cost > 1000:
+    if total_violations >= 10 or total_premium_hours > 20:
         risk_level = "High"
-    elif total_violations <= 2 and total_cost < 200:
+    elif total_violations <= 2 and total_premium_hours < 5:
         risk_level = "Low"
     
     violation_text = " & ".join(critical_violations[:3])  # Limit to top 3 types
     if len(critical_violations) > 3:
         violation_text += " & others"
     
-    return f"{risk_level}: {total_violations} violations including {violation_text} (${total_cost:.0f} est. cost)"
+    return f"{risk_level}: {total_violations} violations including {violation_text} ({total_premium_hours:.1f}hr premium cost)"
 
 
 def _count_daily_double_overtime_violations(analysis_results: Dict[str, Any]) -> int:
@@ -463,17 +514,231 @@ def compile_general_compliance_violations(punch_events: List[LLMParsedPunchEvent
         # Log compliance checking results
         logger.info(f"Compliance check completed | Violations found: {len(all_violations)}")
         
-        if all_violations:
-            violation_types = Counter(v.rule_id for v in all_violations)
-            logger.debug(f"Violation breakdown: {dict(violation_types)}")
-        
         return all_violations
         
     except Exception as e:
-        # If violation detection fails, return empty list with error logged
-        # In production, this should be logged to monitoring system
-        logger.error(f"Error detecting compliance violations: {e}")
+        logger.error(f"Error in compliance violation compilation: {str(e)}")
         return []
+
+
+def compile_compliance_violations_with_costs(punch_events: List[LLMParsedPunchEvent]) -> List[ViolationInstance]:
+    """
+    Compile all compliance violations and enrich them with cost information.
+    
+    Args:
+        punch_events: List of parsed punch events from LLM
+        
+    Returns:
+        List of all violations found across all employees, enriched with cost data
+    """
+    try:
+        # FIXED: Use the same violation detection method as KPIs (with duplicate handling)
+        # This ensures the detailed violations list matches the KPI counts
+        violations_data = detect_compliance_violations_with_duplicate_handling(punch_events)
+        all_violations = violations_data.get("all_violations", [])
+        
+        if not all_violations:
+            logger.info("No violations found to enrich with cost data")
+            return []
+        
+        # Get cost breakdown separately for enrichment
+        cost_violations_data = detect_compliance_violations_with_costs(punch_events)
+        violation_costs = cost_violations_data.get("violation_costs", {})
+        violation_details = violation_costs.get("violation_details", [])
+        
+        # Create a lookup map for cost data by violation key
+        cost_lookup = {}
+        for detail in violation_details:
+            key = (detail["rule_id"], detail["employee_identifier"], detail["date_of_violation"])
+            cost_lookup[key] = detail
+        
+        # Enrich each violation with cost information
+        enriched_violations = []
+        
+        for violation in all_violations:
+            # Create a copy of the violation data, preserving ALL original fields
+            enriched_violation_data = {
+                "rule_id": violation.rule_id,
+                "rule_description": violation.rule_description,
+                "employee_identifier": violation.employee_identifier,
+                "date_of_violation": violation.date_of_violation,
+                "specific_details": violation.specific_details,
+                "suggested_action_generic": violation.suggested_action_generic,
+                "related_punch_events": getattr(violation, 'related_punch_events', []),
+                "shift_summary": getattr(violation, 'shift_summary', None),
+            }
+            
+            # Look up cost information for this specific violation
+            violation_key = (violation.rule_id, violation.employee_identifier, violation.date_of_violation)
+            cost_detail = cost_lookup.get(violation_key)
+            
+            # Debug logging for cost enrichment
+            logger.info(f"Cost enrichment debug - Rule: {violation.rule_id}, Employee: {violation.employee_identifier}, Cost detail found: {cost_detail is not None}, Shift summary present: {enriched_violation_data['shift_summary'] is not None}")
+            
+            if cost_detail:
+                # Always show hours instead of dollar costs to avoid misleading wage assumptions
+                # Managers can calculate their own costs using actual wage data
+                enriched_violation_data["estimated_cost"] = None
+                enriched_violation_data["cost_description"] = None
+                
+                # Calculate penalty and overtime hours based on violation type
+                if "MEAL_BREAK" in violation.rule_id:
+                    # All meal break violations get penalty hours (1 hour each)
+                    enriched_violation_data["penalty_hours"] = 1.0
+                    enriched_violation_data["overtime_hours"] = 0.0
+                elif "DAILY_OVERTIME" in violation.rule_id or "WEEKLY_OVERTIME" in violation.rule_id or "DAILY_OT" in violation.rule_id:
+                    # Extract actual overtime hours from cost detail or violation details
+                    actual_overtime_hours = cost_detail.get("overtime_hours", 0.0)
+                    if actual_overtime_hours == 0.0:
+                        # Try to extract from cost description first (format: "Overtime premium: 2.00 hrs × $9.00/hr = $18.00")
+                        cost_desc = cost_detail.get("cost_description", "")
+                        hours_match = re.search(r'(\d+\.?\d*)\s*hrs?\s*×', cost_desc)
+                        if hours_match:
+                            actual_overtime_hours = float(hours_match.group(1))
+                        else:
+                            # Fallback: try to extract from violation details
+                            details = violation.specific_details
+                            hours_match = re.search(r'(\d+\.?\d*)\s*hours?', details.lower())
+                            actual_overtime_hours = float(hours_match.group(1)) if hours_match else 0.0
+                    
+                    # Calculate premium hours based on violation type
+                    if "DOUBLE_TIME" in violation.rule_id:
+                        # Double time: 100% premium (each hour costs 1 extra hour)
+                        premium_hours = actual_overtime_hours * 1.0
+                    else:
+                        # Regular overtime: 50% premium (each hour costs 0.5 extra hour)
+                        premium_hours = actual_overtime_hours * 0.5
+                    
+                    enriched_violation_data["penalty_hours"] = 0.0
+                    enriched_violation_data["overtime_hours"] = premium_hours
+                elif "REST_BREAK" in violation.rule_id:
+                    # Rest break violations are information-level only, no cost impact
+                    enriched_violation_data["penalty_hours"] = 0.0
+                    enriched_violation_data["overtime_hours"] = 0.0
+                else:
+                    # Other violations get no penalty hours
+                    enriched_violation_data["penalty_hours"] = 0.0
+                    enriched_violation_data["overtime_hours"] = 0.0
+            else:
+                # No cost data available - just set hours without dollar costs
+                enriched_violation_data["estimated_cost"] = None
+                enriched_violation_data["cost_description"] = None
+                
+                # Set penalty/overtime hours based on violation type
+                if "MEAL_BREAK" in violation.rule_id:
+                    enriched_violation_data["penalty_hours"] = 1.0
+                    enriched_violation_data["overtime_hours"] = 0.0
+                elif "DAILY_OVERTIME" in violation.rule_id or "WEEKLY_OVERTIME" in violation.rule_id:
+                    # Extract actual overtime hours from violation details
+                    details = violation.specific_details
+                    hours_match = re.search(r'(\d+\.?\d*)\s*hours?', details.lower())
+                    actual_overtime_hours = float(hours_match.group(1)) if hours_match else 0.0
+                    
+                    # Calculate premium hours based on violation type
+                    if "DOUBLE_TIME" in violation.rule_id:
+                        # Double time: 100% premium (each hour costs 1 extra hour)
+                        premium_hours = actual_overtime_hours * 1.0
+                    else:
+                        # Regular overtime: 50% premium (each hour costs 0.5 extra hour)
+                        premium_hours = actual_overtime_hours * 0.5
+                    
+                    enriched_violation_data["penalty_hours"] = 0.0
+                    enriched_violation_data["overtime_hours"] = premium_hours
+                elif "REST_BREAK" in violation.rule_id:
+                    # Rest break violations are information-level only, no cost impact
+                    enriched_violation_data["penalty_hours"] = 0.0
+                    enriched_violation_data["overtime_hours"] = 0.0
+                else:
+                    enriched_violation_data["penalty_hours"] = 0.0
+                    enriched_violation_data["overtime_hours"] = 0.0
+            
+            # Debug logging for enriched violation data
+            logger.info(f"Enriched violation debug - Rule: {violation.rule_id}, "
+                       f"penalty_hours: {enriched_violation_data.get('penalty_hours')}, "
+                       f"overtime_hours: {enriched_violation_data.get('overtime_hours')}, "
+                       f"estimated_cost: {enriched_violation_data.get('estimated_cost')}, "
+                       f"shift_summary: {enriched_violation_data.get('shift_summary') is not None}")
+            
+            # Create enriched ViolationInstance
+            enriched_violation = ViolationInstance(**enriched_violation_data)
+            enriched_violations.append(enriched_violation)
+        
+        # Log enrichment results
+        total_estimated_cost = sum(v.estimated_cost for v in enriched_violations if v.estimated_cost)
+        logger.info(f"Enriched violations compiled | Total: {len(enriched_violations)} | Est. cost: ${total_estimated_cost:.2f}")
+        
+        return enriched_violations
+        
+    except Exception as e:
+        logger.error(f"Error in cost-enriched violation compilation: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        # Fall back to basic violations if enrichment fails
+        return compile_general_compliance_violations(punch_events)
+
+
+def detect_individual_violation_cost(violation: ViolationInstance, base_wage: float = 18.0) -> dict:
+    """
+    Calculate cost information for an individual violation.
+    
+    Args:
+        violation: The violation instance to calculate cost for
+        base_wage: Base hourly wage (default $18/hr)
+        
+    Returns:
+        Dict with estimated_cost and cost_description, or None if no cost applies
+    """
+    try:
+        violation_cost = 0.0
+        cost_description = ""
+        
+        if violation.rule_id.startswith("MEAL_BREAK"):
+            # California meal break penalty: 1 hour of pay per violation
+            violation_cost = base_wage
+            cost_description = f"Meal break penalty: 1 hour at ${base_wage:.2f}/hr = ${violation_cost:.2f}"
+            
+        elif violation.rule_id.startswith("REST_BREAK"):
+            # California rest break penalty: 1 hour of pay per violation
+            violation_cost = base_wage
+            cost_description = f"Rest break penalty: 1 hour at ${base_wage:.2f}/hr = ${violation_cost:.2f}"
+            
+        elif "DAILY_OVERTIME" in violation.rule_id:
+            # Extract overtime hours from violation details
+            details = violation.specific_details
+            hours_match = re.search(r'(\d+\.?\d*)\s*hours?', details.lower())
+            if hours_match:
+                overtime_hours = float(hours_match.group(1))
+                # Daily overtime is typically 1.5x rate for hours over 8
+                if "DOUBLE_TIME" in violation.rule_id:
+                    # Double time for over 12 hours
+                    violation_cost = overtime_hours * base_wage * 2.0
+                    cost_description = f"Double time: {overtime_hours}hr at ${base_wage * 2.0:.2f}/hr = ${violation_cost:.2f}"
+                else:
+                    # Time and a half
+                    violation_cost = overtime_hours * base_wage * 1.5
+                    cost_description = f"Time and a half: {overtime_hours}hr at ${base_wage * 1.5:.2f}/hr = ${violation_cost:.2f}"
+            
+        elif "WEEKLY_OVERTIME" in violation.rule_id:
+            # Extract overtime hours from violation details
+            details = violation.specific_details
+            hours_match = re.search(r'Overtime Hours: (\d+\.?\d*)', details)
+            if hours_match:
+                overtime_hours = float(hours_match.group(1))
+                # Weekly overtime is typically 1.5x rate for hours over 40
+                violation_cost = overtime_hours * base_wage * 1.5
+                cost_description = f"Weekly overtime: {overtime_hours}hr at ${base_wage * 1.5:.2f}/hr = ${violation_cost:.2f}"
+        
+        if violation_cost > 0:
+            return {
+                "estimated_cost": violation_cost,
+                "cost_description": cost_description
+            }
+        else:
+            return None
+            
+    except Exception as e:
+        logger.error(f"Error calculating individual violation cost: {str(e)}")
+        return None
 
 
 def generate_employee_summary_table_data(

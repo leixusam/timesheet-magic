@@ -182,7 +182,7 @@ def per_employee_parsing_to_gemini_tool_dict(
             },
             "timestamp": {
                 "type": "STRING",
-                "description": "The exact date and time of the punch event (ISO 8601 format: YYYY-MM-DDTHH:MM:SSZ)."
+                "description": "The exact date and time of the punch event in ISO 8601 format (e.g., YYYY-MM-DDTHH:MM:SS). Preserve original timezone - only add 'Z' suffix if the source data explicitly contains UTC/timezone information."
             },
             "punch_type_as_parsed": {
                 "type": "STRING",

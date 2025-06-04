@@ -63,8 +63,17 @@ export const DateRangeFilter: React.FC<DateRangeFilterProps> = ({
 
   const handleCustomRangeApply = () => {
     if (tempCustomStart && tempCustomEnd) {
-      const startDate = new Date(tempCustomStart);
-      const endDate = new Date(tempCustomEnd);
+      const parseDate = (dateString: string): Date => {
+        if (dateString.includes('T') || dateString.includes('Z')) {
+          return new Date(dateString);
+        } else {
+          const [year, month, day] = dateString.split('-').map(Number);
+          return new Date(year, month - 1, day);
+        }
+      };
+      
+      const startDate = parseDate(tempCustomStart);
+      const endDate = parseDate(tempCustomEnd);
       
       if (startDate <= endDate) {
         onRangeChange('Custom', startDate, endDate);

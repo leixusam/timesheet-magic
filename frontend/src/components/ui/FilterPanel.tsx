@@ -1,15 +1,22 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { Filter, X } from 'lucide-react';
 import { SearchBox } from './SearchBox';
-import { SeverityFilterChips, ViolationTypeFilterChips, EmployeeFilterChips, DateRangeChip, ClearAllFilters } from './FilterChips';
 import { DateRangeFilter } from './DateRangeFilter';
 import { EmployeeFilter } from './EmployeeFilter';
+import { SeverityFilterChips, ViolationTypeFilterChips, EmployeeFilterChips, DateRangeChip, ClearAllFilters } from './FilterChips';
 import { useReportFilters, FilteredResults } from '@/hooks/useReportFilters';
+import ViolationInfoBadges from './ViolationInfoBadges';
 
 interface FilterPanelProps {
-  filteredResults: FilteredResults;
+  filteredResults: {
+    violations: any[];
+    totalViolationCount: number;
+    totalInformationCount: number;
+    filteredCount: number;
+    activeFilterCount: number;
+  };
   filterHook: ReturnType<typeof useReportFilters>;
   className?: string;
   showResultCount?: boolean;
@@ -40,6 +47,31 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({
   const [isExpanded, setIsExpanded] = React.useState(!isCollapsible);
 
   const hasActiveFilters = filteredResults.activeFilterCount > 0;
+
+  // Helper function to determine if an item is a violation (not information)
+  const isViolationLevel = (ruleId: string): boolean => {
+    const lowerRuleId = ruleId.toLowerCase();
+    return lowerRuleId.includes('meal_break') || 
+           lowerRuleId.includes('daily_ot') || 
+           lowerRuleId.includes('weekly_ot') || 
+           lowerRuleId.includes('double_ot');
+  };
+
+  // Helper function to get violation count display
+  const getViolationCountDisplay = (): React.ReactNode => {
+    const currentViolationCount = filteredResults.violations.filter(v => isViolationLevel(v.rule_id)).length;
+    const currentInformationCount = filteredResults.violations.filter(v => !isViolationLevel(v.rule_id)).length;
+    
+    return (
+      <ViolationInfoBadges 
+        violationCount={currentViolationCount}
+        infoCount={currentInformationCount}
+        size="sm"
+        variant="text"
+        showZeroCounts={true}
+      />
+    );
+  };
 
   return (
     <div className={`bg-white border border-gray-200 rounded-lg shadow-sm ${className}`}>
@@ -124,29 +156,20 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({
             <div className="text-sm text-gray-600">
               {contextInfo && showResultCount ? (
                 <span>
-                  {contextInfo} • {filteredResults.filteredCount === filteredResults.totalCount
-                    ? `${filteredResults.totalCount} violations`
-                    : `${filteredResults.filteredCount} of ${filteredResults.totalCount} violations`
-                  }
+                  {contextInfo} • {getViolationCountDisplay()}
                 </span>
               ) : contextInfo ? (
                 <span>{contextInfo}</span>
               ) : showResultCount ? (
                 <span>
-                  {filteredResults.filteredCount === filteredResults.totalCount
-                    ? `${filteredResults.totalCount} violations`
-                    : `${filteredResults.filteredCount} of ${filteredResults.totalCount} violations`
-                  }
+                  {getViolationCountDisplay()}
                 </span>
               ) : null}
               
               {/* Show result count in collapsed state */}
               {isCollapsible && !isExpanded && !showResultCount && (
                 <span>
-                  {filteredResults.filteredCount === filteredResults.totalCount
-                    ? `${filteredResults.totalCount} violations`
-                    : `${filteredResults.filteredCount} of ${filteredResults.totalCount}`
-                  }
+                  {getViolationCountDisplay()}
                 </span>
               )}
             </div>
@@ -198,10 +221,17 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({
           {/* Filter Chips */}
           <div className="space-y-3">
             {/* Severity Level Chips */}
-            <SeverityFilterChips
-              selectedLevels={filters.severityLevels}
-              onToggle={toggleSeverityLevel}
-            />
+            <div className="space-y-2">
+              <SeverityFilterChips
+                selectedLevels={filters.severityLevels}
+                onToggle={toggleSeverityLevel}
+              />
+              {/* Subtle explanation */}
+              <div className="text-xs text-gray-500">
+                <span className="font-medium">Violation:</span> Requires payroll action • 
+                <span className="font-medium ml-1">Information:</span> Awareness only
+              </div>
+            </div>
 
             {/* Violation Type Chips */}
             {availableOptions.violationTypes.length > 0 && (
@@ -254,7 +284,20 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({
                 />
 
                 {/* Severity Level Chips */}
-                {filters.severityLevels.size > 0 && filters.severityLevels.size < 3 && (
+                {filters.severityLevels.size === 0 && (
+                  <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-xs bg-red-100 text-red-700 border border-red-200">
+                    <span>Severity: None</span>
+                    <button
+                      type="button"
+                      onClick={() => clearSpecificFilter('severity')}
+                      className="text-red-400 hover:text-red-600"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                )}
+                
+                {filters.severityLevels.size === 1 && (
                   Array.from(filters.severityLevels).map(level => (
                     <div key={level} className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-xs bg-red-100 text-red-700 border border-red-200">
                       <span>Severity: {level}</span>

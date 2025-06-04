@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>JavaScript Date Parsing Test</title>
+</head>
+<body>
+    <h1>Testing JavaScript Date Parsing</h1>
+    <div id="results"></div>
+
+    <script>
+        function logResult(message) {
+            document.getElementById('results').innerHTML += '<p>' + message + '</p>';
+            console.log(message);
+        }
+
+        // Test the exact scenario from the backend
+        const dateString = '2025-03-27'; // What backend sends
+        
+        logResult('=== TESTING JAVASCRIPT DATE PARSING ===');
+        logResult('Input: "' + dateString + '"');
+        
+        // Method 1: Frontend's manual parsing approach (from ViolationCard.tsx)
+        const [year, month, day] = dateString.split('-').map(Number);
+        const manualDate = new Date(year, month - 1, day); // month is 0-indexed
+        
+        logResult('Manual parsing: new Date(' + year + ', ' + (month-1) + ', ' + day + ')');
+        logResult('Result: ' + manualDate);
+        logResult('Date string: ' + manualDate.toDateString());
+        logResult('Day of week: ' + manualDate.toLocaleDateString('en-US', { weekday: 'long' }));
+        
+        // Method 2: Direct Date constructor
+        const directDate = new Date(dateString);
+        logResult('Direct parsing: new Date("' + dateString + '")');
+        logResult('Result: ' + directDate);
+        logResult('Date string: ' + directDate.toDateString());
+        logResult('Day of week: ' + directDate.toLocaleDateString('en-US', { weekday: 'long' }));
+        
+        // Method 3: Test with timezone info
+        logResult('=== TIMEZONE INFO ===');
+        logResult('Browser timezone: ' + Intl.DateTimeFormat().resolvedOptions().timeZone);
+        logResult('Manual date getTimezoneOffset(): ' + manualDate.getTimezoneOffset() + ' minutes');
+        logResult('Direct date getTimezoneOffset(): ' + directDate.getTimezoneOffset() + ' minutes');
+        
+        // Method 4: Format like the frontend does
+        const formatDate = (dateString) => {
+            let date;
+            
+            if (dateString.includes('T') || dateString.includes('Z')) {
+                // Full ISO string with time/timezone - parse directly
+                date = new Date(dateString);
+            } else {
+                // Date-only string (YYYY-MM-DD) - parse as local date to prevent timezone shift
+                const [year, month, day] = dateString.split('-').map(Number);
+                date = new Date(year, month - 1, day); // month is 0-indexed
+            }
+            
+            return date.toLocaleDateString('en-US', { 
+                weekday: 'short', 
+                month: 'short', 
+                day: 'numeric' 
+            });
+        };
+        
+        logResult('=== FRONTEND FORMAT FUNCTION TEST ===');
+        logResult('formatDate("' + dateString + '"): ' + formatDate(dateString));
+        
+        // Test one day before to see if it becomes March 26
+        const previousDay = '2025-03-26';
+        logResult('formatDate("' + previousDay + '"): ' + formatDate(previousDay));
+    </script>
+</body>
+</html> 

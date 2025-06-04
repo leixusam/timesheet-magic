@@ -1,11 +1,14 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
+import ViolationInfoBadges from './ViolationInfoBadges';
 
 export interface AccordionItemProps {
   id: string;
   title: string;
   count?: number;
+  violationCount?: number;
+  infoCount?: number;
   children: React.ReactNode;
   isDefaultOpen?: boolean;
   variant?: 'default' | 'violation' | 'employee';
@@ -110,7 +113,15 @@ const AccordionItem: React.FC<{
             <span className={`text-sm font-normal ${styles.headerText}`}>
               {item.title}
             </span>
-            {item.count !== undefined && (
+            {/* Show separate violation and info counts if provided */}
+            {item.violationCount !== undefined && item.infoCount !== undefined ? (
+              <ViolationInfoBadges 
+                violationCount={item.violationCount}
+                infoCount={item.infoCount}
+                size="md"
+                variant="badges"
+              />
+            ) : item.count !== undefined && (
               <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${styles.countBadge}`}>
                 {item.count}
               </span>

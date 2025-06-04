@@ -66,7 +66,18 @@ export default function ReportsPage() {
 
   const formatDate = (dateString: string) => {
     try {
-      const date = new Date(dateString);
+      // BUGFIX: MISC-001 - Handle timezone issues in date parsing
+      let date: Date;
+      
+      if (dateString.includes('T') || dateString.includes('Z')) {
+        // Full ISO string with time/timezone - parse directly
+        date = new Date(dateString);
+      } else {
+        // Date-only string (YYYY-MM-DD) - parse as local date to prevent timezone shift
+        const [year, month, day] = dateString.split('-').map(Number);
+        date = new Date(year, month - 1, day); // month is 0-indexed
+      }
+      
       return date.toLocaleDateString('en-US', {
         year: 'numeric',
         month: 'short',

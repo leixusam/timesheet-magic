@@ -18,7 +18,7 @@ from app.core.compliance_rules import detect_compliance_violations_with_costs, d
 from app.core.reporting import (
     calculate_kpi_tiles_data,
     generate_staffing_density_heatmap_data,
-    compile_general_compliance_violations,
+    compile_compliance_violations_with_costs,
     generate_employee_summary_table_data,
     get_all_violation_types_with_advice
 )
@@ -326,7 +326,7 @@ async def _run_analysis_in_background(
             heatmap_data = generate_staffing_density_heatmap_data(llm_output.punch_events)
             
             # Compile all violations
-            all_violations = compile_general_compliance_violations(llm_output.punch_events)
+            all_violations = compile_compliance_violations_with_costs(llm_output.punch_events)
             
             # Generate employee summaries
             employee_summaries = generate_employee_summary_table_data(llm_output.punch_events)
@@ -698,7 +698,7 @@ async def analyze_timesheet(file: UploadFile = File(...), db: Session = Depends(
             heatmap_data = generate_staffing_density_heatmap_data(llm_output.punch_events)
             
             # Compile all violations
-            all_violations = compile_general_compliance_violations(llm_output.punch_events)
+            all_violations = compile_compliance_violations_with_costs(llm_output.punch_events)
             
             # Generate employee summaries
             employee_summaries = generate_employee_summary_table_data(llm_output.punch_events)
@@ -883,59 +883,66 @@ def _generate_overall_report_summary(
     duplicate_warnings: list
 ) -> str:
     """
-    Generate a plain-language summary of the analysis results.
-    
-    Args:
-        kpis: The KPI data object
-        total_violations: Total number of violations found
-        employee_count: Number of employees analyzed
-        duplicate_warnings: List of duplicate name warnings
-        
-    Returns:
-        Human-readable summary text
+    Generate overall summary text with key insights and premium hours focus.
+    Updated to use frontend-compatible violation counting logic.
     """
     summary_parts = []
     
-    # Basic statistics
-    summary_parts.append(f"Analyzed timesheet data for {employee_count} employees.")
-    summary_parts.append(f"Total labor hours: {kpis.total_scheduled_labor_hours:.1f} hours ({kpis.total_regular_hours:.1f} regular, {kpis.total_overtime_hours:.1f} overtime, {kpis.total_double_overtime_hours:.1f} double overtime).")
+    # Overview
+    summary_parts.append(f"Analysis of {employee_count} employees completed.")
     
-    # Compliance findings
-    if total_violations == 0:
-        summary_parts.append("Great news! No compliance violations were detected.")
+    # Labor summary using premium hours
+    total_premium_hours = getattr(kpis, 'total_premium_hours', None)
+    if total_premium_hours and total_premium_hours > 0:
+        summary_parts.append(f"Total of {kpis.total_scheduled_labor_hours:.0f} hours scheduled with {total_premium_hours:.1f} premium hours identified.")
     else:
-        summary_parts.append(f"Found {total_violations} compliance violations that require attention.")
+        summary_parts.append(f"Total of {kpis.total_scheduled_labor_hours:.0f} hours scheduled.")
+    
+    # Compliance findings - use frontend-compatible counting logic
+    # Frontend logic: only count meal breaks + overtime as "Violations" (excludes rest breaks)
+    frontend_violation_count = (
+        kpis.count_meal_break_violations + 
+        kpis.count_daily_overtime_violations + 
+        kpis.count_weekly_overtime_violations
+    )
+    
+    if frontend_violation_count == 0:
+        summary_parts.append("Great news! No critical compliance violations were detected.")
+    else:
+        summary_parts.append(f"Found {frontend_violation_count} critical compliance violations that require immediate attention.")
         
-        # Highlight specific violation types
+        # Highlight specific violation types (using frontend-compatible logic)
         violation_details = []
         if kpis.count_meal_break_violations > 0:
             violation_details.append(f"{kpis.count_meal_break_violations} meal break violations")
         if kpis.count_daily_overtime_violations > 0:
-            violation_details.append(f"{kpis.count_daily_overtime_violations} daily overtime violations")
+            # Include breakdown of regular vs double overtime if applicable
+            if kpis.count_daily_double_overtime_violations > 0:
+                regular_ot = kpis.count_daily_overtime_violations - kpis.count_daily_double_overtime_violations
+                if regular_ot > 0:
+                    violation_details.append(f"{kpis.count_daily_overtime_violations} daily overtime violations ({regular_ot} regular, {kpis.count_daily_double_overtime_violations} double time)")
+                else:
+                    violation_details.append(f"{kpis.count_daily_overtime_violations} daily overtime violations (all double time)")
+            else:
+                violation_details.append(f"{kpis.count_daily_overtime_violations} daily overtime violations")
         if kpis.count_weekly_overtime_violations > 0:
             violation_details.append(f"{kpis.count_weekly_overtime_violations} weekly overtime violations")
+        
+        # Note about rest breaks separately (as they're "Information" level in frontend)
         if kpis.count_rest_break_violations > 0:
-            violation_details.append(f"{kpis.count_rest_break_violations} rest break violations")
-        if kpis.count_daily_double_overtime_violations > 0:
-            violation_details.append(f"{kpis.count_daily_double_overtime_violations} daily double overtime violations")
+            violation_details.append(f"{kpis.count_rest_break_violations} rest break observations (informational)")
         
         if violation_details:
             summary_parts.append(f"Key issues include: {', '.join(violation_details[:3])}{'...' if len(violation_details) > 3 else ''}.")
     
-    # Cost impact
-    total_ot_cost = (kpis.estimated_overtime_cost or 0) + (kpis.estimated_double_overtime_cost or 0)
-    if total_ot_cost > 0:
-        summary_parts.append(f"Estimated additional labor costs from overtime premiums: ${total_ot_cost:.0f}.")
+    # Cost impact - use premium hours instead of dollar costs
+    total_premium_hours = getattr(kpis, 'total_premium_hours', None)
+    if total_premium_hours and total_premium_hours > 0:
+        summary_parts.append(f"Estimated {total_premium_hours:.1f} premium hours requiring additional compensation beyond regular wages.")
     
-    # Warnings
+    # Duplicate warnings
     if duplicate_warnings:
-        summary_parts.append(f"Note: {len(duplicate_warnings)} potential duplicate employee names detected - please verify employee records.")
-    
-    # Recommendations
-    if total_violations > 0:
-        summary_parts.append("Review the detailed violations list below and implement the suggested corrective actions to ensure compliance.")
-    else:
-        summary_parts.append("Continue monitoring timesheet compliance and consider implementing automated compliance checks.")
+        summary_parts.append(f"Note: {len(duplicate_warnings)} potential duplicate employee names detected and consolidated for analysis.")
     
     return " ".join(summary_parts)
 

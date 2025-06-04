@@ -161,7 +161,7 @@ export default function LeadCaptureForm({
               value={leadData.managerName}
               onChange={handleInputChange}
               autoComplete="name"
-              className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
+              className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 bg-white ${
                 errors.managerName ? 'border-red-300' : 'border-gray-300'
               }`}
               placeholder="Your full name"
@@ -183,7 +183,7 @@ export default function LeadCaptureForm({
               value={leadData.managerEmail}
               onChange={handleInputChange}
               autoComplete="email"
-              className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
+              className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 bg-white ${
                 errors.managerEmail ? 'border-red-300' : 'border-gray-300'
               }`}
               placeholder="your.email@restaurant.com"
@@ -205,7 +205,7 @@ export default function LeadCaptureForm({
               value={leadData.managerPhone}
               onChange={handleInputChange}
               autoComplete="tel"
-              className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
+              className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 bg-white ${
                 errors.managerPhone ? 'border-red-300' : 'border-gray-300'
               }`}
               placeholder="(555) 123-4567"
@@ -228,7 +228,7 @@ export default function LeadCaptureForm({
               value={leadData.storeName}
               onChange={handleInputChange}
               autoComplete="organization"
-              className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
+              className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 bg-white ${
                 errors.storeName ? 'border-red-300' : 'border-gray-300'
               }`}
               placeholder="Your business name"
@@ -275,7 +275,7 @@ export default function LeadCaptureForm({
             value={leadData.storeAddress}
             onChange={handleInputChange}
             autoComplete="street-address"
-            className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
+            className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 bg-white ${
               errors.storeAddress ? 'border-red-300' : 'border-gray-300'
             }`}
             placeholder="123 Main St, City, State 12345"

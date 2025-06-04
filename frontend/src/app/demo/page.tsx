@@ -15,6 +15,13 @@ const mockAnalysisReport = {
     total_double_overtime_hours: 12.0,
     estimated_overtime_cost: 650.00,
     estimated_double_overtime_cost: 360.00,
+    
+    // New premium hours fields
+    total_premium_hours: 28.25,  // Combined penalty + overtime premium
+    total_penalty_hours: 2.0,    // 2 meal break violations × 1hr each
+    total_overtime_premium_hours: 16.25,  // Overtime premium (32.5 × 50%)
+    total_double_time_premium_hours: 12.0,  // Double time premium (12.0 × 100%)
+    
     compliance_risk_assessment: "Medium: 4 violations detected",
     count_meal_break_violations: 2,
     count_rest_break_violations: 1,
@@ -126,7 +133,7 @@ const mockAnalysisReport = {
     "Line 47: Ambiguous time format '1300' interpreted as 1:00 PM",
     "Employee 'Temp Worker' found without a full name - using temporary identifier"
   ],
-  overall_report_summary_text: "Analysis of timesheet data shows 4 compliance violations across 3 employees, with total overtime costs estimated at $1,010. Main concerns include meal break violations and one instance of excessive daily hours. Recommend implementing better break tracking and reviewing scheduling practices."
+  overall_report_summary_text: "Analysis of timesheet data shows 4 compliance violations across 3 employees, with estimated additional labor costs: 28.3 premium hours from overtime and penalties. Main concerns include meal break violations and one instance of excessive daily hours. Recommend implementing better break tracking and reviewing scheduling practices."
 };
 
 export default function DemoPage() {

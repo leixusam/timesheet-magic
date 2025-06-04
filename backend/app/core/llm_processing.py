@@ -150,7 +150,7 @@ def pydantic_to_gemini_tool_dict(pydantic_model_cls, tool_name: str, tool_descri
                 
                 # Handle format for date-time
                 if prop_schema.get("format") == "date-time":
-                    converted_props[prop_name]["description"] += " (ISO 8601 format: YYYY-MM-DDTHH:MM:SSZ)"
+                    converted_props[prop_name]["description"] += " (ISO 8601 format: YYYY-MM-DDTHH:MM:SS - CRITICAL: Do NOT add 'Z' or timezone suffixes unless they were explicitly present in the source data. Preserve original local time.)"
         
         return converted_props
 
@@ -445,10 +445,11 @@ Here is the CSV timesheet data:
 Please systematically extract all punch events. For each event, identify:
 - Employee name/identifier
 - Whether it's a clock in, clock out, break start, or break end
-- The exact timestamp
+- The exact timestamp (CRITICAL: Use format YYYY-MM-DDTHH:MM:SS with NO timezone suffixes like 'Z'. Preserve original local time EXACTLY. If a time shows "10:11 PM" convert to 22:11, NOT 10:11 - pay careful attention to AM/PM indicators.)
 - Any relevant notes
 
 Be thorough and extract every single punch event you find in this CSV data.
+IMPORTANT: Correctly handle AM/PM times. 10:11 PM = 22:11 in 24-hour format, 10:11 AM = 10:11 in 24-hour format.
 """
         else:
             text_prompt = f"""
@@ -463,12 +464,13 @@ The file content is:
 
 Please parse ALL punch events found in this file. Look for:
 - Employee names (watch for variations/misspellings of the same person)
-- Clock in/out times 
+- Clock in/out times (CRITICAL: Use format YYYY-MM-DDTHH:MM:SS with NO timezone suffixes like 'Z'. Preserve original local time EXACTLY. If a time shows "10:11 PM" convert to 22:11, NOT 10:11 - pay careful attention to AM/PM indicators.)
 - Dates
 - Any break periods or meal times
 - Different job roles or departments if mentioned
 
 Extract everything systematically - don't miss any employees or any punch events.
+IMPORTANT: Correctly handle AM/PM times. PM times need to be converted to 24-hour format (e.g., 5:04 PM = 17:04, 10:25 PM = 22:25).
 """
         
         # Prepare prompt parts
@@ -547,14 +549,27 @@ Extract everything systematically - don't miss any employees or any punch events
         # Process LLM response
         if isinstance(llm_response_data, dict) and "punch_events" in llm_response_data:
             try:
-                parsed_output = LLMProcessingOutput(**llm_response_data)
-                logger.info(f"LLM successfully parsed {len(parsed_output.punch_events)} punch events from {original_filename}")
+                # MODIFIED: Only apply timezone conversion if timestamps explicitly end with 'Z' (UTC)
+                # Most timesheets don't have timezone info, so we shouldn't force conversions
+                for event_data in llm_response_data.get("punch_events", []):
+                    if isinstance(event_data, dict) and isinstance(event_data.get("timestamp"), str):
+                        timestamp_str = event_data["timestamp"]
+                        
+                        # Only convert if it's explicitly UTC (ends with 'Z')
+                        if timestamp_str.endswith('Z'):
+                            import pytz
+                            # Convert UTC timestamp to Pacific timezone to prevent off-by-one date errors
+                            try:
+                                utc_dt = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+                                pacific_tz = pytz.timezone('America/Los_Angeles')
+                                pacific_dt = utc_dt.astimezone(pacific_tz)
+                                event_data["timestamp"] = pacific_dt.isoformat()
+                                logger.info(f"Converted UTC timestamp {timestamp_str} to Pacific: {pacific_dt.isoformat()}")
+                            except Exception as e:
+                                logger.warning(f"Failed to convert timestamp {timestamp_str}: {e}")
+                        # Otherwise, leave timestamp as-is (assume it's already in local time)
                 
-                total_end_time = time.time()
-                total_duration = round(total_end_time - total_start_time, 2)
-                logger.debug(f"Total processing time for {original_filename}: {total_duration} seconds")
-                
-                return parsed_output
+                return LLMProcessingOutput(**llm_response_data)
             except Exception as pydantic_error:
                 # Use standardized error handling (task 5.3)
                 raise ParsingError(
@@ -830,10 +845,20 @@ def convert_two_pass_to_single_pass_format(two_pass_result: Dict[str, Any]) -> L
                 # Parse timestamp if it's a string
                 if isinstance(event_data.get("timestamp"), str):
                     timestamp_str = event_data["timestamp"]
+                    
+                    # MODIFIED: Only convert UTC timestamps (ending with 'Z')
+                    # Most timesheets don't have timezone info, so don't force conversions
                     if timestamp_str.endswith('Z'):
-                        from datetime import datetime
-                        timestamp = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
-                        event_data["timestamp"] = timestamp
+                        import pytz
+                        # Convert UTC timestamp to Pacific timezone to prevent off-by-one date errors
+                        try:
+                            utc_dt = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+                            pacific_tz = pytz.timezone('America/Los_Angeles')
+                            pacific_dt = utc_dt.astimezone(pacific_tz)
+                            event_data["timestamp"] = pacific_dt.isoformat()
+                        except Exception as e:
+                            logger.warning(f"Failed to convert timestamp {timestamp_str}: {e}")
+                    # Otherwise, leave timestamp as-is (assume it's already in local time)
                 
                 # Create LLMParsedPunchEvent
                 punch_event = LLMParsedPunchEvent(**event_data)

@@ -85,8 +85,18 @@ export const ViolationTypeGroup: React.FC<ViolationTypeGroupProps> = ({
       
       // Sort violations by date (newest first) and then by employee
       const sortedViolations = [...typeViolations].sort((a, b) => {
-        const dateA = new Date(a.date_of_violation);
-        const dateB = new Date(b.date_of_violation);
+        // BUGFIX: MISC-001 - Handle timezone issues in date parsing
+        const parseDate = (dateString: string): Date => {
+          if (dateString.includes('T') || dateString.includes('Z')) {
+            return new Date(dateString);
+          } else {
+            const [year, month, day] = dateString.split('-').map(Number);
+            return new Date(year, month - 1, day);
+          }
+        };
+        
+        const dateA = parseDate(a.date_of_violation);
+        const dateB = parseDate(b.date_of_violation);
         const dateDiff = dateB.getTime() - dateA.getTime();
         
         if (dateDiff !== 0) return dateDiff;

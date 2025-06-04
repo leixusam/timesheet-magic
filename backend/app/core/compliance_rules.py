@@ -13,7 +13,7 @@ Implements task 3.4 from the PRD.
 
 import re
 from datetime import datetime, timedelta, time as dt_time
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional, Tuple, Any
 from collections import defaultdict, Counter
 from difflib import SequenceMatcher
 import pytz
@@ -109,34 +109,153 @@ class WorkShift:
 
 def parse_shifts_from_punch_events(punch_events: List[LLMParsedPunchEvent]) -> Dict[str, List[WorkShift]]:
     """
-    Parse punch events into organized work shifts by employee and date
+    Parse punch events into organized work shifts by employee with smart midnight-crossing detection
+    
+    This function handles shifts that cross midnight by detecting logical shift boundaries
+    rather than simply grouping by calendar date.
     
     Returns:
         Dict mapping employee_identifier to list of WorkShift objects
     """
-    shifts_by_employee = defaultdict(lambda: defaultdict(lambda: None))
-    
+    # Group by employee first
+    events_by_employee = defaultdict(list)
     for event in punch_events:
-        # Extract date from timestamp
-        shift_date = event.timestamp.date()
-        employee_id = event.employee_identifier_in_file
-        
-        # Get or create shift for this employee and date
-        if shifts_by_employee[employee_id][shift_date] is None:
-            shifts_by_employee[employee_id][shift_date] = WorkShift(employee_id, shift_date)
-            
-        shifts_by_employee[employee_id][shift_date].add_punch_event(event)
+        events_by_employee[event.employee_identifier_in_file].append(event)
     
-    # Analyze all shifts and convert to simple dict
     result = {}
-    for employee_id, date_shifts in shifts_by_employee.items():
-        shifts_list = []
-        for shift_date, shift in date_shifts.items():
-            shift.analyze_shift()
-            shifts_list.append(shift)
-        result[employee_id] = sorted(shifts_list, key=lambda s: s.shift_date)
+    
+    for employee_id, employee_events in events_by_employee.items():
+        # Sort events by timestamp
+        sorted_events = sorted(employee_events, key=lambda x: x.timestamp)
+        
+        # Detect logical shifts using smart boundary detection
+        logical_shifts = _detect_logical_shifts(sorted_events)
+        
+        # Convert to WorkShift objects
+        work_shifts = []
+        for shift_events in logical_shifts:
+            # Use the date of the first punch as shift_date (shift start date)
+            shift_date = shift_events[0].timestamp.date()
+            work_shift = WorkShift(employee_id, shift_date)
+            
+            for event in shift_events:
+                work_shift.add_punch_event(event)
+            
+            work_shift.analyze_shift()
+            work_shifts.append(work_shift)
+        
+        result[employee_id] = work_shifts
         
     return result
+
+def _detect_logical_shifts(sorted_events: List[LLMParsedPunchEvent]) -> List[List[LLMParsedPunchEvent]]:
+    """
+    Detect logical shift boundaries in a sorted list of punch events for one employee.
+    
+    A new shift starts when:
+    1. Clock Out → Clock In gap is 4+ hours, OR
+    2. Clock Out → Clock In gap crosses 4 AM (dead zone), OR
+    3. Very long gap between any events (12+ hours backup rule)
+    
+    Default behavior: Keep events together in the same shift unless we find a clear break pattern.
+    """
+    if not sorted_events:
+        return []
+    
+    shifts = []
+    current_shift = [sorted_events[0]]
+    
+    for i in range(1, len(sorted_events)):
+        prev_event = sorted_events[i-1]
+        curr_event = sorted_events[i]
+        
+        # Calculate time gap between events
+        time_gap_hours = (curr_event.timestamp - prev_event.timestamp).total_seconds() / 3600
+        
+        # Determine if this starts a new shift
+        should_start_new_shift = False
+        
+        # PRIMARY RULE: Only split on Clock Out → Clock In patterns (actual breaks)
+        if (_is_clock_out_event(prev_event) and _is_clock_in_event(curr_event)):
+            
+            # Rule 1: Long break (4+ hours) = new shift
+            if time_gap_hours >= 4:
+                should_start_new_shift = True
+            
+            # Rule 2: Break crosses 4 AM dead zone = new shift
+            elif _crosses_4am_dead_zone(prev_event.timestamp, curr_event.timestamp):
+                should_start_new_shift = True
+            
+            # Rule 3: Otherwise, Clock Out → Clock In with < 4 hours and no dead zone crossing
+            # stays in same shift (short break like meal break)
+        
+        # BACKUP RULE: Very long gap between any events (data quality issues)
+        # Use 18+ hours to avoid splitting legitimate (though long) work shifts
+        elif time_gap_hours > 18:
+            should_start_new_shift = True
+        
+        # DEFAULT: All other patterns (Clock In → Clock Out, Clock In → Clock In, etc.) 
+        # stay in the same shift unless backup rule triggers
+        
+        if should_start_new_shift:
+            # Close current shift and start new one
+            shifts.append(current_shift)
+            current_shift = [curr_event]
+        else:
+            # Add to current shift (default behavior)
+            current_shift.append(curr_event)
+    
+    # Add the last shift
+    if current_shift:
+        shifts.append(current_shift)
+    
+    return shifts
+
+def _crosses_4am_dead_zone(clock_out_time: datetime, clock_in_time: datetime) -> bool:
+    """
+    Check if the gap between clock out and clock in crosses 4 AM.
+    
+    4 AM is considered a "dead zone" when most businesses are closed,
+    so crossing this time typically indicates a new shift rather than
+    a break within the same shift.
+    
+    Args:
+        clock_out_time: When employee clocked out
+        clock_in_time: When employee clocked in again
+        
+    Returns:
+        True if the gap crosses 4 AM, False otherwise
+    """
+    # Handle same-day case
+    if clock_out_time.date() == clock_in_time.date():
+        # If on same day, check if 4 AM falls between out and in times
+        if clock_out_time.hour <= 4 and clock_in_time.hour >= 4:
+            return True
+        return False
+    
+    # Handle next-day case (most common for midnight-crossing shifts)
+    if clock_in_time.date() == clock_out_time.date() + timedelta(days=1):
+        # Check if the gap spans across 4 AM
+        # If clock out is before 4 AM or clock in is after 4 AM (next day)
+        if clock_out_time.hour < 4 or clock_in_time.hour >= 4:
+            return True
+        return False
+    
+    # Multi-day gaps definitely cross 4 AM
+    if (clock_in_time.date() - clock_out_time.date()).days > 1:
+        return True
+    
+    return False
+
+def _is_clock_in_event(event: LLMParsedPunchEvent) -> bool:
+    """Check if an event represents clocking in"""
+    punch_type = event.punch_type_as_parsed.lower()
+    return any(keyword in punch_type for keyword in ['in', 'clock in', 'start'])
+
+def _is_clock_out_event(event: LLMParsedPunchEvent) -> bool:
+    """Check if an event represents clocking out"""
+    punch_type = event.punch_type_as_parsed.lower()
+    return any(keyword in punch_type for keyword in ['out', 'clock out', 'end'])
 
 def detect_meal_break_violations(punch_events: List[LLMParsedPunchEvent]) -> List[ViolationInstance]:
     """
@@ -438,7 +557,18 @@ def _check_missing_rest_breaks(shift: WorkShift, expected_breaks: int) -> Option
                            f"Manual review recommended.",
             suggested_action_generic="Ensure employees receive 10-minute paid rest breaks for every 4 hours worked "
                                    "across all roles. Review timekeeping practices to better track rest break compliance. "
-                                   "⚠️ Note: This flagging may have false positives due to data limitations."
+                                   "⚠️ Note: This flagging may have false positives due to data limitations.",
+            shift_summary=_create_shift_summary_for_violation(shift),
+            related_punch_events=[
+                {
+                    "timestamp": event.timestamp.strftime("%Y-%m-%d %H:%M:%S"),
+                    "formatted_time": event.timestamp.strftime("%I:%M %p"),
+                    "punch_type": event.punch_type_as_parsed,
+                    "role": event.role_as_parsed,
+                    "department": event.department_as_parsed
+                }
+                for event in shift.punch_events
+            ]
         )
     
     return None
@@ -508,7 +638,18 @@ def _check_shift_daily_overtime(shift: WorkShift) -> List[ViolationInstance]:
                                f"Shift: {shift.clock_in_time.strftime('%I:%M %p') if shift.clock_in_time else 'N/A'} - "
                                f"{shift.clock_out_time.strftime('%I:%M %p') if shift.clock_out_time else 'N/A'}",
                 suggested_action_generic="California law requires time-and-a-half pay for hours worked over 8 in a day. "
-                                       "Review employee scheduling and consider additional staffing to reduce overtime costs."
+                                       "Review employee scheduling and consider additional staffing to reduce overtime costs.",
+                shift_summary=_create_shift_summary_for_violation(shift),
+                related_punch_events=[
+                    {
+                        "timestamp": event.timestamp.strftime("%Y-%m-%d %H:%M:%S"),
+                        "formatted_time": event.timestamp.strftime("%I:%M %p"),
+                        "punch_type": event.punch_type_as_parsed,
+                        "role": event.role_as_parsed,
+                        "department": event.department_as_parsed
+                    }
+                    for event in shift.punch_events
+                ]
             )
             violations.append(time_and_half_violation)
         
@@ -526,7 +667,18 @@ def _check_shift_daily_overtime(shift: WorkShift) -> List[ViolationInstance]:
                                f"Shift: {shift.clock_in_time.strftime('%I:%M %p') if shift.clock_in_time else 'N/A'} - "
                                f"{shift.clock_out_time.strftime('%I:%M %p') if shift.clock_out_time else 'N/A'}",
                 suggested_action_generic="California law requires double-time pay for hours worked over 12 in a day. "
-                                       "Long shifts increase fatigue and safety risks. Consider mandatory shift limits."
+                                       "Long shifts increase fatigue and safety risks. Consider mandatory shift limits.",
+                shift_summary=_create_shift_summary_for_violation(shift),
+                related_punch_events=[
+                    {
+                        "timestamp": event.timestamp.strftime("%Y-%m-%d %H:%M:%S"),
+                        "formatted_time": event.timestamp.strftime("%I:%M %p"),
+                        "punch_type": event.punch_type_as_parsed,
+                        "role": event.role_as_parsed,
+                        "department": event.department_as_parsed
+                    }
+                    for event in shift.punch_events
+                ]
             )
             violations.append(double_time_violation)
     
@@ -1699,8 +1851,20 @@ def _check_consolidated_first_meal_break_violation(shift: WorkShift, timing_limi
             specific_details=f"Worked {shift.total_hours_worked:.1f} hours with no meal breaks detected{roles_text}. "
                            f"California law requires a 30-minute meal break for shifts over 5 hours, "
                            f"starting no later than {latest_meal_start.strftime('%I:%M %p')}.",
-            suggested_action_generic="Ensure employees working more than 5 hours across multiple roles receive an uninterrupted "
-                                   "30-minute meal break that starts before the end of their 5th hour of work."
+            suggested_action_generic="IMMEDIATE ACTION: Pay 1 hour premium wage for inadequate meal break in next payroll. "
+                                   "PREVENTION: Ensure all meal breaks are at least 30 minutes long and uninterrupted, "
+                                   "regardless of role changes. Train managers to protect employee break time.",
+            shift_summary=_create_shift_summary_for_violation(shift),
+            related_punch_events=[
+                {
+                    "timestamp": event.timestamp.strftime("%Y-%m-%d %H:%M:%S"),
+                    "formatted_time": event.timestamp.strftime("%I:%M %p"),
+                    "punch_type": event.punch_type_as_parsed,
+                    "role": event.role_as_parsed,
+                    "department": event.department_as_parsed
+                }
+                for event in shift.punch_events
+            ]
         )
     
     # Check if the first meal break started too late
@@ -1719,8 +1883,20 @@ def _check_consolidated_first_meal_break_violation(shift: WorkShift, timing_limi
             specific_details=f"First meal break started at {first_meal_start.strftime('%I:%M %p')}, "
                            f"but should have started by {latest_meal_start.strftime('%I:%M %p')}. "
                            f"Worked {shift.total_hours_worked:.1f} hours total{roles_text}.",
-            suggested_action_generic="Schedule meal breaks to start before the end of the 5th hour of work, "
-                                   "even when employees work multiple roles."
+            suggested_action_generic="IMMEDIATE ACTION: Pay 1 hour premium wage for late meal break in next payroll. "
+                                   "PREVENTION: Schedule meal breaks to start before the end of the 5th hour of work, "
+                                   "even when employees work multiple roles. Train managers on timing requirements across all positions.",
+            shift_summary=_create_shift_summary_for_violation(shift),
+            related_punch_events=[
+                {
+                    "timestamp": event.timestamp.strftime("%Y-%m-%d %H:%M:%S"),
+                    "formatted_time": event.timestamp.strftime("%I:%M %p"),
+                    "punch_type": event.punch_type_as_parsed,
+                    "role": event.role_as_parsed,
+                    "department": event.department_as_parsed
+                }
+                for event in shift.punch_events
+            ]
         )
     
     # Check if the meal break was too short
@@ -1733,8 +1909,20 @@ def _check_consolidated_first_meal_break_violation(shift: WorkShift, timing_limi
             specific_details=f"Meal break was only {meal_duration_minutes:.0f} minutes "
                            f"({first_meal_start.strftime('%I:%M %p')} to {first_meal_end.strftime('%I:%M %p')}). "
                            f"California law requires at least 30 minutes.",
-            suggested_action_generic="Ensure all meal breaks are at least 30 minutes long and uninterrupted, "
-                                   "regardless of role changes."
+            suggested_action_generic="IMMEDIATE ACTION: Pay 1 hour premium wage for inadequate meal break in next payroll. "
+                                   "PREVENTION: Ensure all meal breaks are at least 30 minutes long and uninterrupted, "
+                                   "regardless of role changes. Train managers to protect employee break time.",
+            shift_summary=_create_shift_summary_for_violation(shift),
+            related_punch_events=[
+                {
+                    "timestamp": event.timestamp.strftime("%Y-%m-%d %H:%M:%S"),
+                    "formatted_time": event.timestamp.strftime("%I:%M %p"),
+                    "punch_type": event.punch_type_as_parsed,
+                    "role": event.role_as_parsed,
+                    "department": event.department_as_parsed
+                }
+                for event in shift.punch_events
+            ]
         )
     
     return None
@@ -1759,8 +1947,20 @@ def _check_consolidated_second_meal_break_violation(shift: WorkShift, timing_lim
                            f"{len(shift.meal_breaks)} meal break(s){roles_text}. California law requires a second "
                            f"30-minute meal break for shifts over 10 hours, starting no later than "
                            f"{latest_second_meal_start.strftime('%I:%M %p')}.",
-            suggested_action_generic="Provide a second 30-minute meal break for employees working more than "
-                                   "10 hours across multiple roles, starting before the end of their 10th hour of work."
+            suggested_action_generic="IMMEDIATE ACTION: Pay 1 hour premium wage for missing second meal break in next payroll. "
+                                   "PREVENTION: Provide a second 30-minute meal break for employees working more than "
+                                   "10 hours across multiple roles, starting before the end of their 10th hour of work. Monitor long shifts carefully.",
+            shift_summary=_create_shift_summary_for_violation(shift),
+            related_punch_events=[
+                {
+                    "timestamp": event.timestamp.strftime("%Y-%m-%d %H:%M:%S"),
+                    "formatted_time": event.timestamp.strftime("%I:%M %p"),
+                    "punch_type": event.punch_type_as_parsed,
+                    "role": event.role_as_parsed,
+                    "department": event.department_as_parsed
+                }
+                for event in shift.punch_events
+            ]
         )
     
     # Check timing and duration of second meal break
@@ -1779,8 +1979,20 @@ def _check_consolidated_second_meal_break_violation(shift: WorkShift, timing_lim
             specific_details=f"Second meal break started at {second_meal_start.strftime('%I:%M %p')}, "
                            f"but should have started by {latest_second_meal_start.strftime('%I:%M %p')}. "
                            f"Worked {shift.total_hours_worked:.1f} hours total{roles_text}.",
-            suggested_action_generic="Schedule second meal breaks to start before the end of the 10th hour of work "
-                                   "across all roles."
+            suggested_action_generic="IMMEDIATE ACTION: Pay 1 hour premium wage for late second meal break in next payroll. "
+                                   "PREVENTION: Schedule second meal breaks to start before the end of the 10th hour of work "
+                                   "across all roles. Train managers on timing requirements across all positions.",
+            shift_summary=_create_shift_summary_for_violation(shift),
+            related_punch_events=[
+                {
+                    "timestamp": event.timestamp.strftime("%Y-%m-%d %H:%M:%S"),
+                    "formatted_time": event.timestamp.strftime("%I:%M %p"),
+                    "punch_type": event.punch_type_as_parsed,
+                    "role": event.role_as_parsed,
+                    "department": event.department_as_parsed
+                }
+                for event in shift.punch_events
+            ]
         )
     
     if meal_duration_minutes < min_duration_minutes:
@@ -1792,7 +2004,20 @@ def _check_consolidated_second_meal_break_violation(shift: WorkShift, timing_lim
             specific_details=f"Second meal break was only {meal_duration_minutes:.0f} minutes "
                            f"({second_meal_start.strftime('%I:%M %p')} to {second_meal_end.strftime('%I:%M %p')}). "
                            f"California law requires at least 30 minutes.",
-            suggested_action_generic="Ensure all meal breaks are at least 30 minutes long and uninterrupted."
+            suggested_action_generic="IMMEDIATE ACTION: Pay 1 hour premium wage for inadequate second meal break in next payroll. "
+                                   "PREVENTION: Ensure all meal breaks are at least 30 minutes long and uninterrupted, "
+                                   "regardless of role changes. Train managers to protect employee break time.",
+            shift_summary=_create_shift_summary_for_violation(shift),
+            related_punch_events=[
+                {
+                    "timestamp": event.timestamp.strftime("%Y-%m-%d %H:%M:%S"),
+                    "formatted_time": event.timestamp.strftime("%I:%M %p"),
+                    "punch_type": event.punch_type_as_parsed,
+                    "role": event.role_as_parsed,
+                    "department": event.department_as_parsed
+                }
+                for event in shift.punch_events
+            ]
         )
     
     return None
@@ -1906,7 +2131,18 @@ def _check_consolidated_missing_rest_breaks(shift: WorkShift, expected_breaks: i
                            f"Manual review recommended.",
             suggested_action_generic="Ensure employees receive 10-minute paid rest breaks for every 4 hours worked "
                                    "across all roles. Review timekeeping practices to better track rest break compliance. "
-                                   "⚠️ Note: This flagging may have false positives due to data limitations."
+                                   "⚠️ Note: This flagging may have false positives due to data limitations.",
+            shift_summary=_create_shift_summary_for_violation(shift),
+            related_punch_events=[
+                {
+                    "timestamp": event.timestamp.strftime("%Y-%m-%d %H:%M:%S"),
+                    "formatted_time": event.timestamp.strftime("%I:%M %p"),
+                    "punch_type": event.punch_type_as_parsed,
+                    "role": event.role_as_parsed,
+                    "department": event.department_as_parsed
+                }
+                for event in shift.punch_events
+            ]
         )
     
     return None
@@ -2528,3 +2764,27 @@ def test_comprehensive_wage_and_cost_analysis():
         print(f"   ${detail['estimated_cost']:.2f} - {detail['rule_id']}: {detail['employee_identifier']}")
     
     return results
+
+def _create_shift_summary_for_violation(shift: WorkShift) -> Dict[str, Any]:
+    """
+    Create a comprehensive shift summary for violation instances.
+    This provides the shift details needed for the frontend display.
+    """
+    return {
+        "employee_identifier": shift.employee_identifier,
+        "shift_date": shift.shift_date.strftime("%Y-%m-%d"),
+        "clock_in_time": shift.clock_in_time.strftime("%I:%M %p") if shift.clock_in_time else None,
+        "clock_out_time": shift.clock_out_time.strftime("%I:%M %p") if shift.clock_out_time else None,
+        "clock_in_formatted": shift.clock_in_time.strftime("%I:%M %p") if shift.clock_in_time else None,
+        "clock_out_formatted": shift.clock_out_time.strftime("%I:%M %p") if shift.clock_out_time else None,
+        "total_hours_worked": shift.total_hours_worked,
+        "meal_break_count": len(shift.meal_breaks),
+        "meal_breaks": [
+            {
+                "start_time": start.strftime("%I:%M %p"),
+                "end_time": end.strftime("%I:%M %p"),
+                "duration_minutes": int((end - start).total_seconds() / 60)
+            }
+            for start, end in shift.meal_breaks
+        ] if shift.meal_breaks else []
+    }

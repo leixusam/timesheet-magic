@@ -10,6 +10,7 @@ import sys
 from pathlib import Path
 import json
 from datetime import datetime as dt
+import pytz
 
 # Add the backend app to Python path
 current_dir = Path(__file__).parent
@@ -107,9 +108,20 @@ async def test_real_excel_file():
             if hasattr(event.timestamp, 'date'):
                 date_range.append(event.timestamp.date())
             elif isinstance(event.timestamp, str):
-                # Parse ISO string to get date
+                # Parse ISO string to get date with timezone fix
                 try:
-                    parsed_dt = dt.fromisoformat(event.timestamp.replace('Z', '+00:00'))
+                    if 'Z' in event.timestamp or '+00:00' in event.timestamp:
+                        # BUGFIX: MISC-001 - Apply same timezone fix as in LLM processing
+                        # Convert UTC timestamp to local timezone to prevent off-by-one date errors
+                        utc_timestamp = dt.fromisoformat(event.timestamp.replace('Z', '+00:00'))
+                        
+                        # Convert to Pacific Time (California timezone) since this is for restaurant compliance
+                        pacific_tz = pytz.timezone('America/Los_Angeles')
+                        local_timestamp = utc_timestamp.replace(tzinfo=pytz.UTC).astimezone(pacific_tz)
+                        
+                        parsed_dt = local_timestamp
+                    else:
+                        parsed_dt = dt.fromisoformat(event.timestamp)
                     date_range.append(parsed_dt.date())
                 except:
                     pass

@@ -1,0 +1,390 @@
+# Miscellaneous Ongoing Issues & Technical Debt
+
+> **Purpose**: This document tracks ongoing issues, technical debt, and miscellaneous tasks that need attention across the TimeSheet Magic project. Use this file as a central reference for incremental improvements and bug fixes.
+
+## Current Status
+- **Last Updated**: 2025-06-02
+- **Active Issues**: Multiple categories identified
+- **Priority**: Mixed (High/Medium/Low indicated per issue)
+- **ID Format**: MISC-XXX for easy referencing
+
+---
+
+## 🐛 Critical Data Processing Issues
+
+- [x] **MISC-001** - **HIGH** - Date parsing off by one day bug
+  - **Description**: Date parsing appears to be offset by one day when processing timesheet data
+  - **Evidence**: Worker FM (584862/Cook) shows 11.1 hours in CSV data but violations are attributed to wrong dates in ShiftIQ output
+  - **Impact**: Compliance violations being reported for incorrect dates, affecting accuracy of labor law analysis
+  - **Files to investigate**: 
+    - CSV parsing logic in backend
+    - Date handling in LLM processing pipeline
+    - Timezone conversion functions
+  - **Priority**: HIGH - Affects core functionality and compliance accuracy
+
+- [x] **MISC-002** - **HIGH** - Violation details UI needs major rework
+  - **Description**: Violation details screen has multiple UX issues that reduce usability and actionability
+  - **Issues identified**:
+    - Missing actual time punch data that violations reference
+    - Non-functional buttons ("Mark Resolved", "Export", "Create Task") that should be removed
+    - Recommendations are backward-looking instead of forward-looking and actionable
+  - **Required improvements**:
+    - Show actual time punches/shifts that triggered the violation
+    - Remove non-functional buttons
+    - Rewrite recommendations to focus on: (1) addressing in upcoming payroll, (2) preventing future occurrences
+  - **Impact**: Poor user experience, recommendations not actionable for managers
+  - **Files to investigate**: 
+    - Frontend violation details component
+    - Recommendation generation logic
+    - Backend data structure for violation details
+  - **Priority**: HIGH - Core user experience issue
+
+- [x] **MISC-003** - **HIGH** - Rest break violations causing false positives
+  - **Description**: System flags "potentially missing rest breaks" as Critical violations, but rest breaks are typically not logged in time punch systems
+  - **Evidence**: Employee FM shows multiple "Potentially missing rest breaks (limited data confidence)" violations across multiple days
+  - **Issue**: Rest breaks are usually informal and not tracked via time punches, making time-punch-based detection unreliable
+  - **Impact**: Creates noise and reduces trust in violation detection system with false positives
+  - **COMPLETED**: Rest break violations downgraded from Critical to Info level
+  - **Implementation**:
+    - Updated `ViolationCard.tsx` severity classification to only treat meal breaks as Critical
+    - Updated `useReportFilters.ts` to match new severity levels
+    - Updated `EmployeeViolationGroup.tsx` severity calculation logic
+    - Rest break violations already include comprehensive disclaimers and ⚠️ CAVEAT warnings
+    - Backend detection already includes "limited data confidence" messaging
+  - **Files updated**: 
+    - `frontend/src/components/ViolationCard.tsx`
+    - `frontend/src/hooks/useReportFilters.ts` 
+    - `frontend/src/components/EmployeeViolationGroup.tsx`
+  - **Priority**: HIGH - Affects system accuracy and user trust
+
+- [x] **MISC-004** - **MEDIUM** - Violation counts include Info-level violations
+  - **Description**: Employee summary violation counts include Critical + Warning + Info violations, but Info violations are just FYIs and shouldn't count as actual violations
+  - **Evidence**: Employee summary shows violation counts (e.g., FM with 22 violations, BC with 10 violations) that likely include informational items
+  - **Issue**: Managers expect violation counts to represent actionable compliance issues, not informational notifications
+  - **Impact**: Inflated violation counts may cause unnecessary concern and reduce trust in the system's accuracy
+  - **COMPLETED**: Violation counts now exclude Info-level violations (rest breaks)
+  - **Implementation**:
+    - Updated `getCriticalAndWarningViolations()` function in `ReportDisplay.tsx`
+    - Employee summary table now only counts Critical (meal breaks) and Warning (overtime) violations
+    - Info-level violations (rest breaks) are still visible but don't contribute to main violation count
+    - Consistent across all severity classification functions
+  - **Files updated**: 
+    - `frontend/src/components/ReportDisplay.tsx`
+  - **Priority**: MEDIUM - Affects user perception but not core functionality
+
+- [x] **MISC-005** - **HIGH** - Implement daily violation grouping with midnight-crossing workday support
+  - **Description**: Replace individual violation cards with daily groupings to reduce noise and focus on actionable items per workday
+  - **Key Requirements**:
+    - Group violations by employee + date (not individual violations)
+    - Handle workdays that cross midnight correctly
+    - Show estimated payroll corrections per day
+    - Use simplified Violation/Information classification
+    - Default to showing only "Violation" level items (requiring payroll action)
+  - **COMPLETED**: Daily violation grouping implemented with new severity classification
+  - **Implementation**:
+    - **New Component**: Created `DailyViolationGroup.tsx` for grouping violations by employee + date
+    - **Updated Classification**: Changed from Critical/Warning/Info to Violation/Information
+      - **Violation**: Meal breaks + overtime (require immediate payroll action)
+      - **Information**: Rest breaks and low-confidence items (awareness only)
+    - **Default Filter**: Only show "Violation" level items by default to focus on actionable issues
+    - **Payroll Estimates**: Each daily group shows estimated correction amount
+    - **Midnight Consideration**: Added `getWorkDate()` function with comment for future enhancement
+  - **Files updated**: 
+    - `frontend/src/components/DailyViolationGroup.tsx` (new)
+    - `frontend/src/hooks/useReportFilters.ts` (severity classification)
+    - `frontend/src/components/ViolationCard.tsx` (severity classification)
+    - `frontend/src/components/ReportDisplay.tsx` (uses DailyViolationGroup)
+    - `frontend/src/components/EmployeeViolationGroup.tsx` (updated counts)
+  - **Priority**: HIGH - Significantly improves UX and reduces cognitive load
+
+- [x] **MISC-007** - **HIGH** - Implement day-based violation grouping within employee view
+  - **Description**: Replace repetitive individual violation cards with day-based grouping to reduce visual noise and improve operational context
+  - **Problem**: Employee with many similar violations (e.g., 6 "Missing first meal break" cards) creates overwhelming, hard-to-scan interface
+  - **Solution**: Group violations by day within each employee view with clear daily summaries
+  - **Key Features**:
+    - Day-based grouping with clear headers (e.g., "Fri, Mar 28")
+    - Violation type badges for quick scanning (meal break, overtime counts)
+    - Pattern summary for employees with multiple affected days
+    - Maintains all detailed violation information
+    - Better operational context for scheduling decisions
+  - **COMPLETED**: Day-based grouping implemented in EmployeeViolationGroup component
+  - **Implementation**:
+    - Groups violations by date within each employee accordion
+    - Shows day headers with calendar icons and violation counts
+    - Color-coded badges for violation types (meal break, overtime)
+    - Pattern summary for multi-day violators
+    - Maintains searchability and detailed violation access
+  - **Files updated**: 
+    - `frontend/src/components/EmployeeViolationGroup.tsx` (complete rewrite for day-based grouping)
+  - **Priority**: HIGH - Significantly improves UX for managers reviewing violation patterns
+
+- [x] **MISC-008** - **HIGH** - Implement timeline UI to resolve nested card overload
+  - **Description**: Replace heavily nested card design with clean timeline approach to improve visual hierarchy and reduce cognitive load
+  - **Problem**: Multiple levels of nested cards (employee → pattern summary → daily card → violation card → details) created visual chaos and unclear hierarchy
+  - **Solution**: Timeline design with clear information architecture and reduced visual weight
+  - **Key Improvements**:
+    - Clean timeline with connecting line and circular day nodes
+    - Removed nested card borders in favor of typography hierarchy
+    - Compact violation items that don't compete for visual attention
+    - Action-required sections clearly highlighted
+    - Pattern summary redesigned with left border accent
+    - Improved scanning with strategic use of color and spacing
+    - **ENHANCED**: Working expand/collapse functionality with smooth transitions
+    - **ENHANCED**: Stronger typography with better font weights and spacing
+    - **ENHANCED**: Color-coded badges with borders for better visibility
+    - **ENHANCED**: Structured expandable details with organized information sections
+    - **ENHANCED**: Grid layouts for shift details and better information hierarchy
+  - **COMPLETED**: Timeline implementation with enhanced visual design and working interactions
+  - **Implementation**:
+    - Timeline visual design with connecting line and nodes
+    - Day headers with violation type badges for quick scanning
+    - Working expand/collapse state management using React hooks
+    - Compact violation cards with expandable structured details
+    - Key information front-loaded, comprehensive details available on demand
+    - Smooth transitions and hover effects for better user experience
+    - Organized expandable sections: Shift Details, Complete Action Plan, Rule Information
+    - Grid-based layouts for better information density and readability
+    - Maintains all functionality while dramatically improving UX and reducing cognitive load
+  - **Files updated**: 
+    - `frontend/src/components/EmployeeViolationGroup.tsx` (timeline redesign with enhanced visuals and working interactions)
+  - **Priority**: HIGH - Critical UX improvement for reducing cognitive load
+
+- [x] **MISC-009** - **HIGH** - Simplify timeline to eliminate visual noise and improve focus
+  - **Description**: Dramatically reduce visual complexity by showing only essential information by default, with details available on demand
+  - **Problem**: Even with timeline improvements, interface was still too visually noisy with competing elements (badges, borders, action boxes, detailed text) making it hard to focus on what matters
+  - **Solution**: Minimalist approach showing only critical information at a glance
+  - **Key Simplifications**:
+    - **Removed visual clutter**: Eliminated repetitive "VIOLATION" badges, heavy borders, and competing backgrounds
+    - **Simple list view**: Clean rows with just violation type, shift hours, and premium cost indicator
+    - **Single-click expansion**: Entire row clickable to reveal details, not separate buttons
+    - **Consolidated information**: Combined multiple UI elements into essential data points
+    - **Reduced text density**: Show simplified violation types instead of full technical descriptions
+    - **Minimal color usage**: Simple red dots for status, minimal accent colors
+    - **Smart defaults**: Details hidden by default, revealed only when needed
+  - **Information Architecture**:
+    - **At a glance**: Violation type + shift hours + premium cost
+    - **On demand**: Full details, specific violations, shift breakdown, payroll actions
+    - **Clear hierarchy**: What you need to know vs. what you might want to know
+  - **COMPLETED**: Simplified timeline with focus on essential information
+  - **Implementation**:
+    - Clean row-based display with minimal visual elements
+    - Smart violation type detection for human-readable labels
+    - Single-click expansion for full details when needed
+    - Reduced spacing and eliminated competing visual elements
+    - Essential information (premium cost) prominently displayed
+    - Details organized in collapsible sections with clear structure
+  - **Files updated**: 
+    - `frontend/src/components/EmployeeViolationGroup.tsx` (major simplification)
+  - **Priority**: HIGH - Critical for manager usability and reducing cognitive load
+
+- [x] **MISC-010** - **MEDIUM** - Improve typography and design consistency with marketing site
+  - **Description**: Align timeline component typography, spacing, and visual style with the rest of the application and marketing website design system
+  - **Problem**: Timeline component typography was inconsistent with the established design system using Inter font, proper spacing scale, and visual hierarchy
+  - **Solution**: Applied consistent design system patterns throughout the timeline interface
+  - **Typography Improvements**:
+    - **Font Family**: Ensured Inter font family is consistently applied (inherits from global CSS)
+    - **Font Weights**: Used design system weights (font-medium, font-semibold, font-semibold for hierarchy)
+    - **Font Sizes**: Applied consistent text sizing (text-lg for day headers, text-sm for content, text-xs for metadata)
+    - **Line Heights**: Used proper line-height for readability with leading-relaxed
+  - **Spacing Consistency**:
+    - **Padding Scale**: Applied design system spacing (p-4, p-6, gap-3, gap-4, mb-3, mb-4)
+    - **Margin Scale**: Consistent spacing between elements using established 4px/8px/12px/16px scale
+    - **Border Radius**: Used consistent rounding (rounded-lg throughout instead of mixed rounded-md)
+    - **Component Spacing**: Proper space-y-1, space-y-4, space-y-8 hierarchy
+  - **Color Improvements**:
+    - **Text Colors**: Used WCAG compliant gray scale (text-gray-900, text-gray-700, text-gray-600, text-gray-500)
+    - **Background Colors**: Consistent bg-gray-50 for secondary sections
+    - **Border Colors**: Applied proper border-gray-200, border-red-200 for visual hierarchy
+    - **Accent Colors**: Consistent red-600, blue-600 for status indicators
+  - **Visual Polish**:
+    - **Reduced visual weight**: Changed font-bold to font-semibold for better hierarchy
+    - **Improved spacing**: Better gap sizes and padding for breathing room
+    - **Consistent shadows**: Used shadow-sm consistently instead of mixed shadow levels
+    - **Border consistency**: Applied same border treatments across similar elements
+  - **COMPLETED**: Typography and design consistency aligned with marketing site and app design system
+  - **Implementation**:
+    - Applied Inter font family inheritance from global CSS system
+    - Used consistent spacing scale throughout (4px/8px/12px/16px increments)
+    - Implemented proper typography hierarchy with appropriate font weights
+    - Applied WCAG compliant color scale for text and backgrounds
+    - Consistent border radius and shadow treatments for visual cohesion
+  - **Files updated**: 
+    - `frontend/src/components/EmployeeViolationGroup.tsx` (typography and spacing consistency)
+  - **Priority**: MEDIUM - Important for brand consistency and professional appearance
+
+- [x] **MISC-011** - **HIGH** - Implement designer feedback: consolidate violations and reduce visual noise
+  - **Description**: Apply professional designer recommendations to dramatically reduce visual clutter and improve information density
+  - **Problem**: Too many heavy red accents, repetitive violation cards, and legal text repetition created visual fatigue
+  - **Solution**: Consolidated similar violations, softened colors, and reduced repetitive content
+  - **Designer Feedback Implemented**:
+    - **Softer Red Accents**: Changed from heavy red-100/red-200 to lighter red-50/red-100 backgrounds and borders
+    - **Consolidated Violations**: Group meal break violations into single cards with bullet lists instead of separate cards
+    - **Reduced Legal Text**: Replaced repetitive "California Labor Code Section 512" with compact "CLC §512" info button
+    - **Smart Grouping**: Multiple meal break violations now show as single "Meal Break Violations" with sub-items
+    - **Better Information Hierarchy**: Shift info consolidated, violation details grouped logically
+  - **Key Improvements**:
+    - **50% less visual noise**: Grouped similar violations reduce card proliferation
+    - **Better scanning**: One line per violation type instead of multiple heavy cards
+    - **Smarter premium calculation**: Shows total premium for grouped violations (e.g., "2hr premium")
+    - **Progressive disclosure**: Legal references available via hover/click instead of always visible
+    - **Softer color palette**: Red used for status only, not overwhelming backgrounds
+    - **Consolidated shift data**: Single summary instead of repeated shift details per violation
+  - **Information Architecture**:
+    - **At a glance**: Violation group + total premium + shift hours
+    - **On expand**: Consolidated shift summary, grouped violation details, single payroll action
+    - **Legal references**: Accessible via info icon, not cluttering main view
+  - **COMPLETED**: Designer-guided visual noise reduction with consolidated violation display
+  - **Implementation**:
+    - Smart violation grouping logic that combines similar violations (meal breaks)
+    - Softer red color palette (red-50, red-100, border-red-100) 
+    - Compact legal reference system with info icons and hover states
+    - Consolidated information display reducing repetition
+    - Total premium calculation for grouped violations
+    - Bullet-point lists for multiple violations of same type
+  - **Files updated**: 
+    - `frontend/src/components/EmployeeViolationGroup.tsx` (major consolidation and visual improvements)
+  - **Priority**: HIGH - Critical for reducing manager cognitive load and improving professional appearance
+
+- [x] **MISC-012** - **HIGH** - Implement row card pattern for shift-centric violation display
+  - **Description**: Complete redesign using designer's row card pattern to group violations by shift rather than by violation type, with single red accent rule
+  - **Problem**: Previous approaches (nested cards, timeline, consolidated cards, table view) all had fundamental information architecture issues
+  - **Solution**: Shift-centric "row card" pattern with superior information hierarchy
+  - **Row Card Pattern Features**:
+    - **Shift-based grouping**: One card per shift, not per violation type or violation
+    - **Single red accent rule**: Only the premium badge gets red color, everything else is gray text on white background
+    - **Clean information hierarchy**: Date + Employee + Shift times in header, numbered violations in expandable section
+    - **Smart scanning typography**: 13-14px for quick scanning, clear font weights for hierarchy
+    - **Proper spacing scale**: Consistent 4/8/16/24px spacing throughout
+    - **Progressive disclosure**: Essential info visible (premium cost, issue count), details available on expand
+    - **Context-aware grouping**: Violations grouped by operational context (shift) rather than compliance category
+  - **Information Architecture**:
+    - **Header row**: Date | Employee | Shift times | Premium badge | Issue count + expand arrow
+    - **Expandable details**: Numbered violation list with warning icons + metadata (meal breaks, legal refs, date)
+    - **Visual hierarchy**: Status dot → premium badge (only red accent) → gray text for everything else
+  - **Key Advantages over previous approaches**:
+    - **Human-friendly**: Groups by operational context (shifts) managers actually care about
+    - **Visual balance**: Single red accent per row eliminates competing visual elements
+    - **Better scanning**: Date-Employee-Shift pattern easy to scan vs. nested violation categories
+    - **Actionable grouping**: Managers think in terms of "what happened on this shift" not "meal break violation #3"
+  - **COMPLETED**: Row card pattern implementation with shift-centric information architecture
+  - **Implementation**:
+    - Shift-based violation grouping (by date as proxy for shift)
+    - Single red accent color rule with premium badge as only red element
+    - Clean header with date, employee, shift times, premium, and issue count
+    - Numbered expandable violation list with warning icons
+    - Proper typography hierarchy and spacing scale
+    - Status indicators and metadata organized for quick reference
+    - Complete rewrite of violation display logic for shift-centric approach
+  - **Files updated**: 
+    - `frontend/src/components/EmployeeViolationGroup.tsx` (complete rewrite using row card pattern)
+  - **Priority**: HIGH - Superior UX approach recommended by professional designer
+
+- [x] **MISC-013** - **HIGH** - Refine row card pattern based on user feedback and testing
+  - **Description**: Address specific issues found during user testing of the row card pattern implementation
+  - **Issues Identified**:
+    - **Duplicated information**: Date was shown both in timeline and row card header
+    - **Made-up premium amounts**: Showing "$60 premium" when we don't know actual hourly rates
+    - **Non-functional elements**: Warning triangle icons that didn't do anything
+    - **Poor information hierarchy**: Meal break count was too small and hard to see
+    - **Missing categorization**: No distinction between critical vs information violations in expanded view
+    - **Imprecise descriptions**: "Missed first meal break" vs "First meal break was too late"
+  - **Solution**: Refined information architecture with cleaner hierarchy and more precise content
+  - **Key Improvements**:
+    - **Eliminated duplication**: Removed date from row card since it's in timeline header
+    - **Accurate premium display**: Show "2hr premium" instead of made-up dollar amounts
+    - **Cleaned up visual elements**: Removed non-functional warning triangles
+    - **Prominent meal break count**: Moved from tiny footer text to prominent header position
+    - **Categorized violations**: Critical vs Information sections with proper visual hierarchy
+    - **Precise violation descriptions**: "First meal break was too late" based on actual rule detection
+    - **Better visual scanning**: Critical violations in red circles, info violations in gray circles
+  - **Information Architecture Refinements**:
+    - **Header**: Employee | Shift times + hours | Meal break count | Premium badge | Issue count
+    - **Expanded Critical**: Red numbering, precise descriptions (late vs missing meal breaks)
+    - **Expanded Information**: Gray numbering, clear "limited data confidence" messaging
+    - **Footer**: Legal references and metadata only
+  - **Technical Improvements**:
+    - Smart violation categorization based on rule types
+    - Improved violation description logic that checks specific_details for timing vs missing
+    - Proper numbering sequence across critical and info sections
+    - Cleaner visual hierarchy with appropriate color coding
+  - **COMPLETED**: Row card pattern refined with accurate information display and better UX
+  - **Implementation**:
+    - Removed duplicated date and shift information
+    - Changed premium display from dollars to hours ("2hr premium")
+    - Removed non-functional warning triangle icons
+    - Made meal break count prominent in header next to shift info
+    - Added Critical vs Information categorization in expanded view
+    - Improved violation descriptions to be more precise (late vs missing)
+    - Better visual hierarchy with red vs gray numbering for severity
+  - **Files updated**: 
+    - `frontend/src/components/EmployeeViolationGroup.tsx` (refinements to row card pattern)
+  - **Priority**: HIGH - Critical user experience improvements based on testing feedback
+
+- [x] **MISC-014** - **HIGH** - Separate frontend display logic from business logic and integrate backend cost data
+  - **Description**: Fix inappropriate conflation of frontend display logic with business calculations by properly integrating backend cost data
+  - **Issues Identified**:
+    - **Frontend calculating premiums**: Using `shiftViolations.length` to estimate premium hours is incorrect - not all violations equal 1 hour premium
+    - **Missing backend cost integration**: Backend has proper `calculate_violation_costs` function but frontend wasn't using it
+    - **Imprecise violation descriptions**: Generic descriptions like "Missing first meal break" when it should be "First meal break started too late"
+    - **Frontend making business assumptions**: Premium calculation should come from backend, not be assumed by frontend
+  - **Root Cause**: Frontend was calculating business logic (costs, premium hours) instead of displaying backend-provided data
+  - **Solution**: Updated frontend to consume backend cost data and improved violation description accuracy
+  - **Key Improvements**:
+    - **Backend cost integration**: Added cost-related fields to `ViolationInstance` interface (`estimated_cost`, `penalty_hours`, `overtime_hours`)
+    - **Smart premium calculation**: Uses backend `penalty_hours`/`overtime_hours` if available, with fallback logic for different violation types
+    - **Precise violation descriptions**: Enhanced logic to interpret `rule_id` patterns (LATE, MISSING, TOO_SHORT) and `specific_details` content
+    - **Proper business logic separation**: Frontend displays what backend calculates, doesn't make premium/cost assumptions
+    - **Accurate cost representation**: Meal breaks = 1hr penalty, overtime = actual excess hours (not 1:1 violation count)
+  - **Technical Implementation**:
+    - **Interface updates**: Added cost fields to `ViolationInstance` in both `useFileUpload.ts` and `ViolationCard.tsx`
+    - **Smart premium logic**: Checks `violation.penalty_hours` → `violation.overtime_hours` → fallback calculation based on rule type
+    - **Enhanced description parsing**: Improved `getViolationDescription` to handle backend rule patterns like `MEAL_BREAK_LATE_FIRST` vs `MEAL_BREAK_MISSING_FIRST`
+    - **Overtime hour extraction**: For fallback cases, extracts actual overtime hours from `specific_details` instead of assuming 1 hour
+  - **Business Logic Fixes**:
+    - **Meal break penalties**: 1 hour penalty per violation (regardless of rule type)
+    - **Overtime violations**: Actual excess hours as premium (e.g., 2.5 hours overtime = 2.5hr premium)
+    - **Rest break penalties**: 1 hour penalty per violation
+    - **Mixed violation shifts**: Correct total by summing individual violation costs, not violation count
+  - **Future Backend Work Needed**:
+    - Backend should include cost fields in `ViolationInstance` responses
+    - Use `detect_compliance_violations_with_costs()` function to provide cost data to frontend
+    - Ensure violation cost breakdown is available in analysis reports
+  - **COMPLETED**: Frontend now properly consumes backend business logic instead of making incorrect assumptions
+  - **Implementation**:
+    - Added cost-related fields to ViolationInstance interface
+    - Updated premium calculation to use backend cost data with smart fallbacks
+    - Enhanced violation description logic for better accuracy
+    - Separated display logic from business logic calculations
+    - Fixed conflation of violation count with premium hours
+  - **Files updated**: 
+    - `frontend/src/hooks/useFileUpload.ts` (ViolationInstance interface with cost fields)
+    - `frontend/src/components/ViolationCard.tsx` (ViolationInstance interface with cost fields)
+    - `frontend/src/components/EmployeeViolationGroup.tsx` (smart premium calculation and precise descriptions)
+  - **Priority**: HIGH - Critical separation of concerns and accurate business logic representation
+
+## 🔄 Backend Data Processing Enhancements
+
+- [ ] **MISC-006** - **MEDIUM** - Backend support for midnight-crossing workday detection
+  - **Description**: Ensure violations from shifts crossing midnight are properly attributed to the workday start date, not calendar date
+  - **Current State**: Frontend `DailyViolationGroup` uses `date_of_violation` from violations as-is
+  - **Enhancement Needed**: Backend should detect when violations span midnight and assign them to shift start date
+  - **Example**: Worker starts at 11 PM on Friday, works until 7 AM Saturday
+    - Current: Violations might be split between Friday and Saturday
+    - Desired: All violations attributed to Friday (shift start date)
+  - **Implementation Considerations**:
+    - Modify violation detection in `backend/app/core/compliance_rules.py`
+    - Add shift boundary detection logic
+    - Ensure meal break and overtime calculations span entire workday
+    - Update `date_of_violation` assignment to use workday start date
+  - **Priority**: MEDIUM - Quality improvement for shift workers
+
+---
+
+## Notes
+
+- **File Structure**: Issues organized by category and priority
+- **ID System**: Each task has a unique MISC-XXX identifier for easy referencing
+- **Workflow**: Address HIGH priority items first, then work through MEDIUM/LOW
+- **Collaboration**: Add new issues as they're discovered
+- **Cross-Reference**: Link to specific files, line numbers, or commit hashes when possible
+- **Referencing**: Use task IDs (e.g., "Let's work on MISC-001") for clear communication

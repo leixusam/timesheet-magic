@@ -39,6 +39,7 @@ import json
 import os
 from pathlib import Path
 from datetime import datetime, date
+import pytz
 
 # Add current directory to Python path for imports
 sys.path.insert(0, '.')
@@ -74,7 +75,20 @@ def test_compliance_violations_with_existing_data():
         punch_events = []
         for event_data in llm_data.get("punch_events", []):
             # Convert timestamp string back to datetime
-            event_data["timestamp"] = datetime.fromisoformat(event_data["timestamp"].replace('Z', '+00:00'))
+            if isinstance(event_data["timestamp"], str):
+                timestamp_str = event_data["timestamp"]
+                if 'Z' in timestamp_str or '+00:00' in timestamp_str:
+                    # BUGFIX: MISC-001 - Apply same timezone fix as in LLM processing
+                    # Convert UTC timestamp to local timezone to prevent off-by-one date errors
+                    utc_timestamp = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+                    
+                    # Convert to Pacific Time (California timezone) since this is for restaurant compliance
+                    pacific_tz = pytz.timezone('America/Los_Angeles')
+                    local_timestamp = utc_timestamp.replace(tzinfo=pytz.UTC).astimezone(pacific_tz)
+                    
+                    event_data["timestamp"] = local_timestamp
+                else:
+                    event_data["timestamp"] = datetime.fromisoformat(timestamp_str)
             punch_events.append(LLMParsedPunchEvent(**event_data))
         
         print(f"✅ Loaded {len(punch_events)} punch events from existing data")

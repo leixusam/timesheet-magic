@@ -33,20 +33,20 @@ const BaseChip: React.FC<BaseChipProps> = ({
 
     switch (variant) {
       case 'severity':
-        if (label === 'Critical') {
+        if (label === 'Violation') {
           return `
             bg-red-50 text-red-700 border-red-200
             hover:bg-red-100 hover:border-red-300
           `;
-        } else if (label === 'Warning') {
-          return `
-            bg-orange-50 text-orange-700 border-orange-200
-            hover:bg-orange-100 hover:border-orange-300
-          `;
-        } else {
+        } else if (label === 'Information') {
           return `
             bg-yellow-50 text-yellow-700 border-yellow-200
             hover:bg-yellow-100 hover:border-yellow-300
+          `;
+        } else {
+          return `
+            bg-gray-50 text-gray-700 border-gray-200
+            hover:bg-gray-100 hover:border-gray-300
           `;
         }
       case 'type':
@@ -115,7 +115,7 @@ export const SeverityFilterChips: React.FC<SeverityFilterChipsProps> = ({
   availableCounts,
   className = ""
 }) => {
-  const severityLevels: SeverityLevel[] = ['Critical', 'Warning', 'Info'];
+  const severityLevels: SeverityLevel[] = ['Violation', 'Information'];
 
   return (
     <div className={`flex flex-wrap gap-2 ${className}`}>

@@ -342,9 +342,12 @@ TARGET EMPLOYEE: "{employee_identifier}"
 - Overlooking manual adjustments or corrections
 
 📅 TIMESTAMP PROCESSING:
-- Convert ALL timestamps to ISO 8601 format with timezone (e.g., "2025-03-16T11:13:00Z")
-- Preserve the EXACT original date and time
-- If unclear about AM/PM, use context from surrounding entries
+- Convert timestamps to ISO 8601 format (e.g., "2025-03-16T11:13:00")
+- CRITICAL: Do NOT add timezone suffixes like 'Z' to timestamps - this causes 7-hour time shifts
+- If the original timesheet shows times like "8:00 AM" or "14:30", treat them as local time (no 'Z' suffix)
+- Only add timezone information if it was explicitly present in the source data
+- IMPORTANT: Correctly handle AM/PM times. PM times must be converted to 24-hour format (e.g., 5:04 PM = 17:04, 10:25 PM = 22:25, 10:11 PM = 22:11)
+- For AM times, keep as-is (e.g., 10:11 AM = 10:11, 5:04 AM = 05:04)
 - For dates: use YYYY-MM-DD format consistently
 
 💡 ACCURACY CHECK:
@@ -409,7 +412,19 @@ Use the parse_employee_punches function to return your structured findings."""
                     if isinstance(event_data.get("timestamp"), str):
                         timestamp_str = event_data["timestamp"]
                         if timestamp_str.endswith('Z'):
-                            timestamp = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+                            import pytz
+                            # BUGFIX: MISC-001 - Date parsing off by one day
+                            # Convert UTC timestamp to local timezone before creating datetime object
+                            # to prevent off-by-one date errors in compliance rules
+                            utc_timestamp = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+                            
+                            # Convert to Pacific Time (California timezone) since this is for restaurant compliance
+                            # Restaurant shifts typically occur in local time, not UTC
+                            pacific_tz = pytz.timezone('America/Los_Angeles')
+                            local_timestamp = utc_timestamp.replace(tzinfo=pytz.UTC).astimezone(pacific_tz)
+                            
+                            # Use the local timestamp so .date() calls get the correct local date
+                            timestamp = local_timestamp
                         else:
                             timestamp = datetime.fromisoformat(timestamp_str)
                         event_data["timestamp"] = timestamp
@@ -842,9 +857,15 @@ async def parse_file_to_structured_data_two_pass(
                 logger.info(f"Decision engine recommends single-pass for '{original_filename}': {decision_result['reason']}")
                 
                 if fallback_to_single_pass:
-                    # TODO: Implement single-pass fallback in Task 8.0
-                    workflow_result['processing_metadata']['processing_mode'] = 'single_pass_recommended'
-                    raise NotImplementedError("Single-pass fallback will be implemented in Task 8.0")
+                    # BUGFIX: Implement single-pass fallback
+                    logger.info(f"🔄 Using single-pass processing as recommended by decision engine for '{original_filename}'")
+                    fallback_result = await _fallback_to_single_pass(
+                        file_content=file_content,
+                        original_filename=original_filename,
+                        failure_reason=f"Decision engine recommendation: {decision_result['reason']}",
+                        failure_context=decision_result
+                    )
+                    return fallback_result
                 else:
                     logger.warning(f"Proceeding with two-pass despite recommendation for '{original_filename}'")
         
@@ -872,8 +893,13 @@ async def parse_file_to_structured_data_two_pass(
             workflow_result['processing_metadata']['workflow_stages']['discovery']['success'] = False
             if fallback_to_single_pass:
                 logger.warning(f"No employees discovered for '{original_filename}', falling back to single-pass")
-                # TODO: Implement single-pass fallback
-                raise NotImplementedError("Single-pass fallback will be implemented in Task 8.0")
+                fallback_result = await _fallback_to_single_pass(
+                    file_content=file_content,
+                    original_filename=original_filename,
+                    failure_reason="No employees discovered in two-pass processing",
+                    failure_context={'discovery_result': discovery_result}
+                )
+                return fallback_result
             else:
                 raise ParsingError(
                     message="No employees found in timesheet file",
@@ -912,8 +938,13 @@ async def parse_file_to_structured_data_two_pass(
             workflow_result['processing_metadata']['workflow_stages']['parallel_processing']['success'] = False
             if fallback_to_single_pass:
                 logger.error(f"Parallel processing success rate too low ({success_rate:.1f}%) for '{original_filename}', falling back to single-pass")
-                # TODO: Implement single-pass fallback
-                raise NotImplementedError("Single-pass fallback will be implemented in Task 8.0")
+                fallback_result = await _fallback_to_single_pass(
+                    file_content=file_content,
+                    original_filename=original_filename,
+                    failure_reason=f"Parallel processing success rate too low ({success_rate:.1f}%)",
+                    failure_context={'employee_results': employee_results, 'success_rate': success_rate}
+                )
+                return fallback_result
             else:
                 raise LLMServiceError(
                     message=f"Parallel processing failed with {success_rate:.1f}% success rate",
@@ -947,7 +978,7 @@ async def parse_file_to_structured_data_two_pass(
         workflow_result['punch_events'] = stitched_result['punch_events']
         workflow_result['parsing_issues'].extend(stitched_result['parsing_issues'])
         
-        # Add comprehensive performance metrics with enhanced monitoring
+        # Add comprehensive performance metrics
         total_duration = time.time() - workflow_start_time
         
         # Calculate decision engine metrics
@@ -1169,8 +1200,7 @@ async def parse_file_to_structured_data_two_pass(
         should_attempt_fallback = (
             fallback_to_single_pass and 
             not force_two_pass and 
-            "single-pass" not in str(e).lower() and
-            not isinstance(e, NotImplementedError)  # Don't fallback if it's our own NotImplementedError
+            "single-pass" not in str(e).lower()
         )
         
         # Specific fallback logic based on error type and failure point
@@ -1208,11 +1238,6 @@ async def parse_file_to_structured_data_two_pass(
                 logger.info(f"✅ Fallback to single-pass succeeded for '{original_filename}'")
                 return fallback_result
                 
-            except NotImplementedError as fallback_error:
-                # Expected - fallback not yet implemented
-                logger.warning(f"🔄 Fallback not yet implemented: {str(fallback_error)}")
-                workflow_result['processing_metadata']['fallback_not_implemented'] = str(fallback_error)
-                
             except Exception as fallback_error:
                 # Fallback also failed
                 logger.error(f"❌ Fallback to single-pass also failed for '{original_filename}': {str(fallback_error)}")
@@ -1226,11 +1251,8 @@ async def parse_file_to_structured_data_two_pass(
             # These are existing well-structured errors
             raise e
         else:
-            # Convert generic exceptions to structured errors
-            raise LLMServiceError(
-                message=f"Two-pass workflow error at {failure_point}: {str(e)}",
-                service_name="Two-Pass Orchestration"
-            )
+            # If it's a new error type, raise a generic error
+            raise Exception(f"Two-pass workflow failed with unexpected error: {str(e)}")
 
 
 def _evaluate_two_pass_suitability(file_content: str, original_filename: str) -> Dict[str, Any]:
@@ -1752,7 +1774,7 @@ async def _fallback_to_single_pass(
     """
     Intelligent fallback to single-pass processing when two-pass fails.
     
-    This function implements a simplified single-pass approach that can handle
+    This function implements a fallback to the existing single-pass approach that can handle
     cases where two-pass processing is not suitable or has failed.
     
     Args:
@@ -1772,36 +1794,37 @@ async def _fallback_to_single_pass(
     logger.info(f"🔄 FALLBACK: Starting single-pass processing for '{original_filename}' due to: {failure_reason}")
     
     try:
-        # Import the original single-pass function
-        # Note: This would need to be implemented or imported from the existing system
-        # For now, we'll create a simplified version
+        # Import the existing single-pass function
+        from .llm_processing import parse_file_to_structured_data
         
-        # Create a simplified single-pass prompt
-        single_pass_prompt = f"""
-You are analyzing a timesheet file to extract all punch events for all employees.
-
-INSTRUCTIONS:
-1. Find ALL employees in the file
-2. Extract ALL punch events (Clock In, Clock Out, Break Start, Break End, etc.)
-3. Convert all timestamps to ISO 8601 format
-4. Return structured data for all punch events
-
-File content:
-```
-{file_content}
-```
-
-Extract all punch events from this timesheet file.
-"""
+        # Convert file content to bytes for the single-pass function
+        file_bytes = file_content.encode('utf-8')
         
-        # This is a placeholder - in a real implementation, you would:
-        # 1. Use the existing single-pass LLM function
-        # 2. Or implement a simplified version that doesn't use employee discovery
-        # 3. Handle the response appropriately
+        # Determine MIME type based on filename
+        if original_filename.lower().endswith('.csv'):
+            mime_type = 'text/csv'
+        elif original_filename.lower().endswith('.txt'):
+            mime_type = 'text/plain'
+        elif original_filename.lower().endswith('.xlsx'):
+            mime_type = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        elif original_filename.lower().endswith('.xls'):
+            mime_type = 'application/vnd.ms-excel'
+        else:
+            mime_type = 'text/plain'
         
-        # For now, return a fallback result structure
+        logger.info(f"🔄 Calling existing single-pass system with MIME type: {mime_type}")
+        
+        # Call the existing single-pass processing function
+        single_pass_result = await parse_file_to_structured_data(
+            file_bytes=file_bytes,
+            mime_type=mime_type,
+            original_filename=original_filename,
+            debug_dir=None
+        )
+        
+        # Convert single-pass result to two-pass format for compatibility
         fallback_result = {
-            'punch_events': [],
+            'punch_events': [event.model_dump() if hasattr(event, 'model_dump') else event.__dict__ for event in single_pass_result.punch_events],
             'processing_metadata': {
                 'original_filename': original_filename,
                 'file_size_chars': len(file_content),
@@ -1812,35 +1835,33 @@ Extract all punch events from this timesheet file.
                 'fallback_context': failure_context,
                 'performance_metrics': {
                     'total_workflow_duration_seconds': time.time() - start_time,
-                    'fallback_triggered': True
+                    'fallback_triggered': True,
+                    'original_processing_mode': 'two_pass_failed'
                 }
             },
-            'parsing_issues': [
-                f"Fallback to single-pass triggered due to: {failure_reason}",
-                "Single-pass fallback implementation is a placeholder - needs integration with existing single-pass system"
-            ],
-            'workflow_success': False  # Set to False since this is a placeholder
+            'parsing_issues': single_pass_result.parsing_issues or [],
+            'workflow_success': True
         }
         
-        logger.warning(
-            f"🔄 Single-pass fallback completed for '{original_filename}' in {time.time() - start_time:.2f}s "
-            f"(placeholder implementation)"
+        # Add note about fallback to parsing issues
+        fallback_result['parsing_issues'].append(f"Note: Fallback to single-pass processing triggered due to: {failure_reason}")
+        
+        execution_time = time.time() - start_time
+        punch_count = len(fallback_result['punch_events'])
+        
+        logger.info(
+            f"✅ Single-pass fallback completed successfully for '{original_filename}' in {execution_time:.2f}s - "
+            f"Extracted {punch_count} punch events"
         )
         
-        # TODO: Implement actual single-pass processing integration
-        # This would involve calling the existing single-pass function from llm_processing.py
-        raise NotImplementedError(
-            f"Single-pass fallback triggered but not yet implemented. "
-            f"Original failure: {failure_reason}. "
-            f"This will be completed in Task 9.0 - Integration with Existing System."
-        )
+        return fallback_result
         
     except Exception as e:
         execution_time = time.time() - start_time
-        logger.error(f"Single-pass fallback also failed for '{original_filename}' after {execution_time:.2f}s: {str(e)}")
+        logger.error(f"❌ Single-pass fallback also failed for '{original_filename}' after {execution_time:.2f}s: {str(e)}")
         
         # If fallback also fails, raise a comprehensive error
         raise LLMServiceError(
             message=f"Both two-pass and single-pass processing failed. Two-pass failure: {failure_reason}. Single-pass failure: {str(e)}",
             service_name="Timesheet Processing Fallback System"
-        ) 
+        )

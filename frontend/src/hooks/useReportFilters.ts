@@ -3,7 +3,7 @@
 import { useState, useMemo, useCallback } from 'react';
 import { ViolationInstance } from '@/components/ViolationCard';
 
-export type SeverityLevel = 'Critical' | 'Warning' | 'Info';
+export type SeverityLevel = 'Violation' | 'Information';
 export type ViolationType = 'Meal Break' | 'Rest Break' | 'Daily Overtime' | 'Weekly Overtime' | 'Double Overtime' | 'Other';
 export type DateRange = 'All' | 'Today' | 'This Week' | 'This Month' | 'Custom';
 
@@ -19,19 +19,20 @@ export interface FilterState {
 
 export interface FilteredResults {
   violations: ViolationInstance[];
-  totalCount: number;
+  totalViolationCount: number; // Only counts "Violation" level items
+  totalInformationCount: number; // Only counts "Information" level items  
   filteredCount: number;
   activeFilterCount: number;
 }
 
 const getSeverityLevel = (ruleId: string): SeverityLevel => {
   const lowerRuleId = ruleId.toLowerCase();
-  if (lowerRuleId.includes('meal_break') || lowerRuleId.includes('rest_break')) {
-    return 'Critical';
-  } else if (lowerRuleId.includes('daily_ot') || lowerRuleId.includes('double_ot')) {
-    return 'Warning';
+  // Violations: Require immediate payroll action (meal breaks + overtime)
+  if (lowerRuleId.includes('meal_break') || lowerRuleId.includes('daily_ot') || lowerRuleId.includes('double_ot') || lowerRuleId.includes('weekly_ot')) {
+    return 'Violation';
   } else {
-    return 'Info';
+    // Information: Awareness only (rest breaks and other low-confidence items)
+    return 'Information';
   }
 };
 
@@ -54,7 +55,15 @@ const getViolationType = (ruleId: string): ViolationType => {
 };
 
 const isWithinDateRange = (violationDate: string, dateRange: DateRange, customStart?: Date, customEnd?: Date): boolean => {
-  const vDate = new Date(violationDate);
+  // BUGFIX: MISC-001 - Handle timezone issues in date parsing
+  let vDate: Date;
+  if (violationDate.includes('T') || violationDate.includes('Z')) {
+    vDate = new Date(violationDate);
+  } else {
+    const [year, month, day] = violationDate.split('-').map(Number);
+    vDate = new Date(year, month - 1, day);
+  }
+  
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
@@ -97,7 +106,7 @@ const isWithinDateRange = (violationDate: string, dateRange: DateRange, customSt
 export const useReportFilters = (violations: ViolationInstance[]) => {
   const [filters, setFilters] = useState<FilterState>({
     searchText: '',
-    severityLevels: new Set<SeverityLevel>(['Critical', 'Warning', 'Info']),
+    severityLevels: new Set<SeverityLevel>(['Violation', 'Information']),
     violationTypes: new Set<ViolationType>(),
     selectedEmployees: new Set<string>(),
     dateRange: 'All',
@@ -107,7 +116,7 @@ export const useReportFilters = (violations: ViolationInstance[]) => {
   const availableOptions = useMemo(() => {
     const employees = [...new Set(violations.map(v => v.employee_identifier))].sort();
     const violationTypes = [...new Set(violations.map(v => getViolationType(v.rule_id)))].sort();
-    const severityLevels: SeverityLevel[] = ['Critical', 'Warning', 'Info'];
+    const severityLevels: SeverityLevel[] = ['Violation', 'Information'];
     
     return {
       employees,
@@ -133,7 +142,7 @@ export const useReportFilters = (violations: ViolationInstance[]) => {
     }
 
     // Severity level filter
-    if (filters.severityLevels.size > 0 && filters.severityLevels.size < 3) {
+    if (filters.severityLevels.size > 0 && filters.severityLevels.size < 2) {
       filtered = filtered.filter(violation => 
         filters.severityLevels.has(getSeverityLevel(violation.rule_id))
       );
@@ -168,14 +177,23 @@ export const useReportFilters = (violations: ViolationInstance[]) => {
     // Calculate active filter count
     let activeFilterCount = 0;
     if (filters.searchText.trim()) activeFilterCount++;
-    if (filters.severityLevels.size < 3) activeFilterCount++;
+    
+    // Severity level filter logic: 
+    // - NOT active when: both selected (showing all items - no filtering)
+    // - Active when: only 'Violation' selected, only 'Information' selected, or none selected
+    if (filters.severityLevels.size === 0 || 
+        (filters.severityLevels.size === 1)) {
+      activeFilterCount++;
+    }
+    
     if (filters.violationTypes.size > 0) activeFilterCount++;
     if (filters.selectedEmployees.size > 0) activeFilterCount++;
     if (filters.dateRange !== 'All') activeFilterCount++;
 
     return {
       violations: filtered,
-      totalCount: violations.length,
+      totalViolationCount: violations.filter(v => getSeverityLevel(v.rule_id) === 'Violation').length,
+      totalInformationCount: violations.filter(v => getSeverityLevel(v.rule_id) === 'Information').length,
       filteredCount: filtered.length,
       activeFilterCount
     };
@@ -234,7 +252,7 @@ export const useReportFilters = (violations: ViolationInstance[]) => {
   const clearAllFilters = useCallback(() => {
     setFilters({
       searchText: '',
-      severityLevels: new Set<SeverityLevel>(['Critical', 'Warning', 'Info']),
+      severityLevels: new Set<SeverityLevel>(['Violation', 'Information']),
       violationTypes: new Set<ViolationType>(),
       selectedEmployees: new Set<string>(),
       dateRange: 'All',
@@ -249,7 +267,7 @@ export const useReportFilters = (violations: ViolationInstance[]) => {
         case 'search':
           return { ...prev, searchText: '' };
         case 'severity':
-          return { ...prev, severityLevels: new Set(['Critical', 'Warning', 'Info']) };
+          return { ...prev, severityLevels: new Set(['Violation', 'Information']) };
         case 'type':
           return { ...prev, violationTypes: new Set() };
         case 'employee':
