@@ -95,9 +95,13 @@ export const EmployeeViolationGroup: React.FC<EmployeeViolationGroupProps> = ({
 
   // Convert to accordion items (one per employee)
   const accordionItems: AccordionItemProps[] = Object.entries(violationsByEmployee).map(([employeeId, empViolations]) => {
-    // Group all violations by date for timeline display (including weekly violations)
+    // Separate daily and weekly violations first
+    const dailyViolations = empViolations.filter(v => !v.rule_id.toLowerCase().includes('weekly_ot'));
+    const weeklyViolations = empViolations.filter(v => v.rule_id.toLowerCase().includes('weekly_ot'));
+    
+    // Group daily violations by date for timeline display
     const dailyViolationGroups: DailyViolationGroup[] = [];
-    const dateGroups = empViolations.reduce((acc, violation) => {
+    const dateGroups = dailyViolations.reduce((acc, violation) => {
       const date = getWorkDate(violation);
       if (!acc[date]) acc[date] = [];
       acc[date].push(violation);
@@ -122,9 +126,44 @@ export const EmployeeViolationGroup: React.FC<EmployeeViolationGroupProps> = ({
       });
     });
 
-    // Sort daily groups by date (newest first)
-    dailyViolationGroups.sort((a, b) => {
-      // BUGFIX: MISC-001 - Handle timezone issues in date parsing
+    // Create weekly violation groups (group by week period)
+    const weeklyViolationGroups: DailyViolationGroup[] = [];
+    if (weeklyViolations.length > 0) {
+      // Group weekly violations by week period
+      const weeklyGroups = weeklyViolations.reduce((acc, violation) => {
+        // Extract week period from specific_details or use a default key
+        const weekMatch = violation.specific_details.match(/Week: (\d{2}\/\d{2}\/\d{4}) - (\d{2}\/\d{2}\/\d{4})/);
+        const weekKey = weekMatch ? `${weekMatch[1]} - ${weekMatch[2]}` : 'Unknown Week';
+        
+        if (!acc[weekKey]) acc[weekKey] = [];
+        acc[weekKey].push(violation);
+        return acc;
+      }, {} as Record<string, ViolationInstance[]>);
+      
+      Object.entries(weeklyGroups).forEach(([weekPeriod, weekViolations]) => {
+        weeklyViolationGroups.push({
+          date: weekPeriod, // Use week period as "date"
+          displayDate: weekPeriod, // Will be overridden to show "Weekly"
+          violations: weekViolations,
+          mealBreakCount: 0,
+          overtimeCount: weekViolations.length
+        });
+      });
+    }
+
+    // Combine and sort all groups (weekly first, then daily by date newest first)
+    const allViolationGroups = [...weeklyViolationGroups, ...dailyViolationGroups];
+    
+    allViolationGroups.sort((a, b) => {
+      // Weekly violations go first
+      const aIsWeekly = a.violations.some(v => v.rule_id.toLowerCase().includes('weekly_ot'));
+      const bIsWeekly = b.violations.some(v => v.rule_id.toLowerCase().includes('weekly_ot'));
+      
+      if (aIsWeekly && !bIsWeekly) return -1;
+      if (!aIsWeekly && bIsWeekly) return 1;
+      if (aIsWeekly && bIsWeekly) return 0; // Keep weekly violations in original order
+      
+      // For daily violations, sort by date (newest first)
       const parseDate = (dateString: string): Date => {
         if (dateString.includes('T') || dateString.includes('Z')) {
           return new Date(dateString);
@@ -158,21 +197,21 @@ export const EmployeeViolationGroup: React.FC<EmployeeViolationGroupProps> = ({
       children: (
         <div className="space-y-4">
           {/* Timeline Section - All Violations */}
-          {dailyViolationGroups.length > 0 && (
+          {allViolationGroups.length > 0 && (
             <div className="space-y-0">
               {/* Timeline Container */}
               <div className="relative">
                 {/* Timeline vertical line - continuous through all items */}
                 <div className="absolute left-1.5 top-1.5 bottom-0 w-0.5 bg-gray-200"></div>
                 
-                {dailyViolationGroups.map((group, groupIndex) => {
+                {allViolationGroups.map((group, groupIndex) => {
                   const violationKey = `daily-${employeeId}-${group.date}`;
                   
                   // Get shift info from first violation
                   const firstViolation = group.violations[0];
                   
                   // Check if this group contains weekly overtime violations
-                  const hasWeeklyOvertime = group.violations.some(v => v.rule_id.toLowerCase().includes('weekly'));
+                  const hasWeeklyOvertime = group.violations.some(v => v.rule_id.toLowerCase().includes('weekly_ot'));
                   
                   // Determine the severity and color for this timeline item
                   const violationItems = group.violations.filter(v => {
@@ -186,16 +225,20 @@ export const EmployeeViolationGroup: React.FC<EmployeeViolationGroupProps> = ({
                   
                   let displayInfo = '';
                   let displayHours = '';
+                  let displayDate = '';
                   
                   if (hasWeeklyOvertime) {
                     // For weekly overtime, show week period and total weekly hours
                     const weekMatch = firstViolation.specific_details.match(/Week: (\d{2}\/\d{2}\/\d{4}) - (\d{2}\/\d{2}\/\d{4})/);
                     const totalHoursMatch = firstViolation.specific_details.match(/Total Hours: (\d+\.?\d*)/);
                     
+                    displayDate = 'Weekly';
                     displayInfo = weekMatch ? `Week: ${weekMatch[1]} - ${weekMatch[2]}` : 'Weekly period';
                     displayHours = totalHoursMatch ? `${parseFloat(totalHoursMatch[1]).toFixed(1)}h total` : 'Total hours N/A';
                   } else {
-                    // For daily violations, show shift times and hours as before
+                    // For daily violations, show date and shift times/hours
+                    displayDate = group.displayDate;
+                    
                     let shiftHours = 'N/A';
                     
                     if (firstViolation.shift_summary?.total_hours_worked) {
@@ -251,7 +294,7 @@ export const EmployeeViolationGroup: React.FC<EmployeeViolationGroupProps> = ({
                         {/* Date and shift info */}
                         <div className="flex items-center gap-4 mb-3">
                           <div className="text-sm font-medium text-gray-900">
-                            {hasWeeklyOvertime ? 'Weekly' : group.displayDate}
+                            {displayDate}
                           </div>
                           <div className="text-sm text-gray-500">
                             {displayInfo} {displayHours}
